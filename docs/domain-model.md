@@ -1,145 +1,112 @@
 # WatchBrief ドメインモデル
 
-> [!NOTE]
-> この文書は仕様の壁打ち用ドラフトである。テーブル、カラム、保存形式は未確定であり、実装方針を決定するものではない。
+## 目的と範囲
 
-## 目的
+アプリで扱う概念、責務、業務ルール、状態遷移を整理する。利用者向け仕様は[プロダクト仕様](product-definition.md)、テーブルとER図は[DB設計](database-design.md)、処理の担当は[システム設計](system-design.md)を参照する。
 
-現在のコレクション設定と、生成済みの過去レポートを分けて扱う場合のデータ構造を確認する。
+概念とアプリのクラス・構造体、DBテーブルを必ず1対1にする必要はない。具体的な型構成や集約境界は実装方式の選定時に検討する。
 
-- コレクション、ウォッチ対象、情報源、スケジュールは次回以降の生成に使う設定。
-- 生成済みレポートはDBへ保存し、閲覧時にAIや情報源を再実行しない。
-- 生成時に失敗した場合はレポートを保存せず、実行結果だけを残す。
+## 概念と責務
 
-## ER図
+| 概念 | 責務 |
+|---|---|
+| User | Collectionと生成履歴の所有者。利用者ごとに閲覧・編集可能な範囲を分ける |
+| Collection | 調査単位。名前、調査方針、有効状態、表示順、初回の更新確認方針を持つ |
+| CollectionSchedule | Collectionの生成予定。日本時間のcron式で表し、1 Collectionにつき最大1つ |
+| WatchTarget | Collection内の個別調査対象。名前、補足指示、有効状態、表示順を持つ |
+| InformationSource | 対象に登録する優先情報源。名称、URL、補足指示を持ち、0件でもよい |
+| GenerationJob | ある予定に対応する1回の生成全体。作成時の名前と入力スナップショットを保持する |
+| GenerationAttempt | workerが実際に開始した1回の実行。開始・終了、生存確認、結果と失敗理由を持つ |
+| Report | 成功した実行の読み取り専用の結果。現在状態、更新・新着、出典、取得失敗、完成Markdownを持つ |
+
+Report内の対象別結果、事実、情報源、事実と出典の対応、取得失敗を保存するテーブルへの分割はDB設計に記載する。
+
+## 現在設定と履歴の境界
+
+- Collection配下の設定は将来の生成に使う。対象と情報源はCollection間で共有しない。
+- 編集可能なCollection名の正本はCollectionにある。Jobは作成時の名前を保持し、AttemptとReportはJobの名前を使う。
+- Job作成時に生成入力を固定する。workerは入力スナップショットを使い、設定変更は後続Jobだけに反映する。
+- スナップショットには調査方針、初回の更新確認方針、有効な対象・情報源とその識別子を含め、認証情報を含めない。
+- 履歴内の対象・情報源IDは生成時の識別値であり、現在設定が削除されても履歴として残る。
+- 過去Reportの閲覧時にはAIや情報源を再実行せず、保存済み本文を表示する。
+
+## 設定と削除の業務ルール
+
+- Collectionを有効にするには、有効な対象とScheduleが必要である。
+- 最後の有効な対象またはScheduleを無効化・削除する前にCollectionを停止する。
+- 停止後は待機中・実行中Jobがあっても配下設定を編集・削除できる。
+- 待機中・実行中Jobがある間はCollection自体を削除できない。削除後も完了済みJob、Attempt、Reportを保持する。
+- Collection削除と新規Job作成が競合しても、削除済み設定からJobを作らない。
+- 初期MVPではUser、Job、Attempt、Reportを削除する機能を持たない。
+- 情報源が0件でも対象を保存でき、最後の情報源も削除できる。同じ対象への同一URL登録は許可する。
+
+## 生成と調査結果の業務ルール
+
+- 同じCollection・同じ予定のJobは1件だけとする。同じCollectionの生成は直列化し、別Collectionは独立して実行できる。
+- 待機中JobにはAttemptがなく、実行開始時に作成する。初期MVPは自動retryなしで最大1 Attemptとし、将来は追加できる関係を持つ。
+- 成功したAttemptにはReportが必ず1件あり、失敗したAttemptには存在しない。Report一式の保存と成功確定は一体として扱う。
+- 一部情報源の取得失敗でも、取得できた情報でReportを保存できれば生成全体は成功とする。
+- workerの停止は生存確認の途絶から別の監視処理で検出する。失敗確定後に元のworkerが戻っても成功へ戻さない。
+- Job作成前のScheduler障害はログ・監視で検知し、存在しないJobを過去予定から画面へ復元しない。
+- 現在状態は期間を限定せず毎回確認する。更新・新着情報は、同じCollectionの前回成功Attemptの開始から今回の開始までを確認する。
+- 生成失敗では更新確認の基準を進めない。対象・情報源の追加や再有効化でもCollection全体の基準を使う。
+- 初回はAI判断または1〜365日の指定を選べる。初期値はAI判断で、AIも1〜365日前の範囲から開始を選ぶ。
+- AIはMarkdown断片を含む構造化データを返す。アプリが検証し、完成Markdownを組み立てる。
+- 調査できた対象には現在状態を必須とし、各事実には同じ対象の出典を必須とする。
+- 登録済み情報源と生成中に発見した情報源を区別し、発見した情報源を設定へ自動登録しない。
+- 未検証のAI生レスポンスをReportとして保存しない。出力検証と表示の詳細はプロダクト仕様を参照する。
+
+## 生成状態の遷移
+
+GenerationJobは作成時に `queued` となり、workerが処理を始めると `running` へ進む。`queued` または `running` のJobがある間はCollectionを削除できない。
 
 ```mermaid
-erDiagram
-    USERS ||--o{ COLLECTIONS : owns
-    COLLECTIONS ||--o| COLLECTION_SCHEDULES : has
-    COLLECTIONS ||--o{ WATCH_TARGETS : has
-    WATCH_TARGETS ||--o{ INFORMATION_SOURCES : has
+stateDiagram-v2
+    state "queued / 待機中" as queued
+    state "running / 実行中" as running
+    state "succeeded / 成功" as succeeded
+    state "failed / 失敗" as failed
 
-    USERS ||--o{ GENERATION_RUNS : owns
-    USERS ||--o{ REPORTS : owns
-    GENERATION_RUNS ||--o| REPORTS : produces
-
-    REPORTS ||--o{ REPORT_TARGET_RESULTS : contains
-    REPORT_TARGET_RESULTS ||--o{ REPORT_FACTS : lists
-    REPORT_FACTS ||--o{ FACT_SOURCES : cites
-    REPORT_TARGET_RESULTS ||--o{ REPORT_SOURCE_FAILURES : records
-
-    USERS {
-        identifier id PK
-        string login_id
-        string password_hash
-    }
-
-    COLLECTIONS {
-        identifier id PK
-        identifier user_id FK
-        string name
-        text research_instruction
-        boolean enabled
-        int display_order
-    }
-
-    COLLECTION_SCHEDULES {
-        identifier id PK
-        identifier collection_id FK
-        string cron_expression
-    }
-
-    WATCH_TARGETS {
-        identifier id PK
-        identifier collection_id FK
-        string name
-        boolean enabled
-        int display_order
-    }
-
-    INFORMATION_SOURCES {
-        identifier id PK
-        identifier watch_target_id FK
-        string name
-        string url
-        text instruction
-    }
-
-    GENERATION_RUNS {
-        identifier id PK
-        identifier user_id FK
-        string collection_name
-        datetime scheduled_at
-        datetime started_at
-        datetime finished_at
-        string status
-        string failure_type
-    }
-
-    REPORTS {
-        identifier id PK
-        identifier user_id FK
-        identifier generation_run_id FK
-        string collection_name
-        datetime coverage_started_at
-        datetime coverage_ended_at
-        datetime generated_at
-    }
-
-    REPORT_TARGET_RESULTS {
-        identifier id PK
-        identifier report_id FK
-        string target_name
-        int display_order
-        string status
-        text ai_summary
-    }
-
-    REPORT_FACTS {
-        identifier id PK
-        identifier report_target_result_id FK
-        text content
-        int display_order
-    }
-
-    FACT_SOURCES {
-        identifier id PK
-        identifier report_fact_id FK
-        string source_name
-        string source_url
-    }
-
-    REPORT_SOURCE_FAILURES {
-        identifier id PK
-        identifier report_target_result_id FK
-        string source_name
-        string source_url
-        string reason
-    }
+    [*] --> queued
+    queued --> running: workerが実行開始
+    running --> succeeded: Report保存成功
+    running --> failed: timeout、生成・保存失敗、heartbeat停止
+    succeeded --> [*]
+    failed --> [*]
 ```
 
-`identifier` は抽象的なID型を表す。UUIDは使わず、ULIDまたは整数の自動採番を候補とするが、採用はDB設計時に決める。
+GenerationAttemptはworkerが実行を始める時点で `running` として作成し、処理結果に応じて `succeeded` または `failed` へ進む。
 
-## 読み方
+```mermaid
+stateDiagram-v2
+    state "running / 実行中" as running
+    state "succeeded / 成功" as succeeded
+    state "failed / 失敗" as failed
 
-- `USERS` はログイン可能な利用者。ユーザー作成とパスワード再設定は、画面ではなく管理コマンドで扱う案を検討中。
-- `COLLECTIONS` はユーザーごとの調査単位。調査方針、停止状態、表示順を持つ。
-- `WATCH_TARGETS` はコレクションに属する。対象をアプリ全体で共通化せず、別コレクションでは別の設定として登録する。
-- `INFORMATION_SOURCES` はウォッチ対象に1件以上紐付く。名称とURLは必須、AIへの補足指示は任意とする案。
-- `COLLECTION_SCHEDULES` は日本時間のcron式を表す。1コレクションに1件設定する。
-- `GENERATION_RUNS` は予定ごとの生成実行。ユーザーに属し、成功、実行中、失敗、timeoutなどの結果を記録する。削除済みコレクションの実行も記録できるよう、現在のコレクション設定には必須リレーションを持たない。
-- `REPORTS` は成功時に保存される生成済みレポート。ユーザーに属し、閲覧時はここに保存した結果を表示して、AIや情報源を再実行しない。
-- `REPORT_TARGET_RESULTS` はレポート内の対象ごとの結果。現在のウォッチ対象設定には必須リレーションを持たず、状態、表示名、表示順、変化がある場合のAI整理を持つ。
-- `REPORT_FACTS` と `FACT_SOURCES` は事実とその出典を表す。
-- `REPORT_SOURCE_FAILURES` は一部情報源の取得失敗を表す。情報源の一部が失敗しても、レポート全体は保存できる案。
+    [*] --> running: workerが実行開始
+    running --> succeeded: Report保存成功
+    running --> failed: timeout、生成・保存失敗、heartbeat停止
+    succeeded --> [*]
+    failed --> [*]
+```
 
-コレクションを削除すると、コレクション、ウォッチ対象、情報源、cronスケジュールは物理削除する。生成済みレポートと実行記録は削除せず保持する。
+## 生成失敗の分類
 
-## DB設計で決めること
+GenerationAttemptの `failure_type` は、処理結果を表す `status` とは分けて、失敗した理由を記録する。
 
-- AIが出力したMarkdownレポートをどのように保存・検証するか。構造化データを併用するかは未決定。
-- レポートに現在の設定や、生成時点の設定をどこまで保存するか。
-- `GENERATION_RUNS` をどこまで画面上で表示するか。
-- コレクションやスケジュールを編集した後、過去の予定の有無をどう判定するか。
-- エラー分類、timeout、retry、実行キューの詳細。
+| `failure_type` | 意味 |
+|---|---|
+| `timeout` | 生成処理全体が制限時間を超えた |
+| `ai_error` | AIサービスの呼び出しに失敗した |
+| `invalid_output` | AIは応答したが、生成結果が必要な形式を満たさなかった |
+| `persistence_error` | Reportまたは関連データのDB保存に失敗した |
+| `worker_interrupted` | workerまたは実行環境が処理途中で停止した |
+| `unexpected_error` | ほかの分類に該当しない想定外のエラーが発生した |
+
+- `running` または `succeeded` のAttemptでは `failure_type` を持たない。
+- `failed` のAttemptでは `failure_type` を必須とする。
+- 一部の情報源を取得できなくてもReportを保存できた場合は、Attemptを `succeeded` とし、個別の失敗を Report内の取得失敗記録 に記録する。
+
+## 設計の確定範囲
+
+以上は合意した概念と業務ルールである。テーブル、カラム、外部キー、制約、日時の保存先、トランザクション境界、保持・バックアップ、インデックスと物理スキーマの確定時期は[DB設計](database-design.md)に記載する。
