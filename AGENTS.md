@@ -4,7 +4,8 @@
 
 - プロダクト仕様は `docs/product-definition.md` を正本とします。仕様相談で合意した内容はここへ記録してください。
 - `docs/system-design.md` はコンポーネントの責務と処理フローを示す論理システム設計です。
-- `docs/domain-model.md` は合意した論理データ構造、ER図、状態遷移、制約を示します。DB製品、物理型、ORM、migration方式は決定しません。
+- `docs/domain-model.md` はアプリの概念、責務、業務ルール、状態遷移を示します。
+- `docs/database-design.md` は論理テーブル案、ER図、カラム、外部キー、制約、初期インデックスを示します。DB製品、物理型、ORM、migration方式は技術選定後に確定します。
 - 仕様が未決定のときは、実装の都合だけで固定しません。提案として理由と影響を説明し、合意後に文書へ反映してください。
 - `.codex/memory/` 配下には独立した仕様や必須ルールを置かず、この `AGENTS.md` と公開文書への参照だけを置いてください。
 
@@ -24,7 +25,7 @@
 
 ## 仕様相談の記録
 
-- 合意したアプリ仕様は `docs/product-definition.md` を起点に、影響する `docs/system-design.md` と `docs/domain-model.md` へ同じ作業で反映してください。
+- 合意したアプリ仕様は `docs/product-definition.md` を起点に、影響する `docs/system-design.md`、`docs/domain-model.md`、`docs/database-design.md` へ同じ作業で反映してください。
 - 仕様相談で合意した内容は、対象Issueへ1議題1コメントで記録してください。
 - コメントには、少なくとも「議題」「背景」「利用者の考え・選択理由」「結果」を含め、なぜその仕様になったかを後から追えるようにしてください。
 - 過去の記録を変更する決定では、以前のコメントを消さず、新しいコメントから更新対象を示してください。

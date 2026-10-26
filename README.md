@@ -36,7 +36,8 @@ MVPでは、次の使い方を想定しています。
 - [ドキュメント一覧](docs/README.md)
 - [プロダクト仕様](docs/product-definition.md)
 - [システム設計](docs/system-design.md)
-- [ドメインモデル・ER図](docs/domain-model.md)
+- [ドメインモデル](docs/domain-model.md)
+- [DB設計・ER図](docs/database-design.md)
 - [技術選定の前提](docs/technical-direction.md)
 
 ## 公開上の注意

@@ -7,7 +7,7 @@
 
 利用者向けWeb画面、定期実行、AIによる調査、レポート保存、異常検知の責務を分け、正常時と失敗時のデータの流れを実装前に共有する。
 
-詳細な利用者向け仕様は[プロダクト仕様](product-definition.md)、データ構造と状態遷移は[ドメインモデル](domain-model.md)を正とする。
+詳細な利用者向け仕様は[プロダクト仕様](product-definition.md)、概念・業務ルール・状態遷移は[ドメインモデル](domain-model.md)、保存構造・ER図・DB制約は[DB設計](database-design.md)を参照する。
 
 技術を選ぶ目的、現在の候補、採用前に比較する事項は[技術選定の前提](technical-direction.md)を参照する。
 
