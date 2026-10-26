@@ -4,20 +4,18 @@ WatchBriefは、最初から実装へ入らず、公開境界、失敗時の挙�
 
 ## 作業単位
 
-- GitHub Issuesは作業管理の候補として使う
-- 毎回Issueを作るかは未決定のため、必要に応じてTODOまたは作業メモで代替する
+- GitHub Issuesを作業と設計判断の記録に使う
 - 1つの変更で扱う目的を説明できる大きさに保つ
 - 変更内容、設計判断、検証結果をIssueまたはPull Requestに残す
 - 実装方式が未確定の段階でruntime、package manager、frameworkを固定しない
 
 ## 実装方式の決め方
 
-TODO
-<!-- 1. 公開してよい情報、公開してはいけない情報を確定する
-2. レポート生成が失敗したときの停止、再実行、ログ方針を決める
-3. GitHub Actions、GitHub Pages、Secretsの権限境界を決める
-4. 静的サイト生成、スクリプト実行、依存管理の方式を決める
-5. 方式が決まってから必要なruntime、package manager、lockfileを追加する -->
+- [プロダクト仕様](docs/product-definition.md)を正本とする
+- [システム設計](docs/system-design.md)で論理的な責務と処理フローを確認する
+- [ドメインモデル](docs/domain-model.md)でデータ関係と状態遷移を確認する
+- runtime、framework、DB、queueなどは、候補、理由、影響を整理してから決める
+- 技術選定後に、必要なpackage manager、lockfile、migration、実行・検証手順を追加する
 
 ## コミットしないもの
 
@@ -37,14 +35,13 @@ TODO
 
 ## エラーハンドリング方針
 
-TODO
-<!-- 将来の自動生成処理では、失敗を隠さず、再実行できる状態を優先します。
-
-- API失敗、検索失敗、レポート生成失敗、GitHub Actions失敗を区別する
-- 取得できなかった情報源はレポートに明記する
-- ActionsログにAPIキー、Authorizationヘッダー、個人情報を出さない
-- 同じ日時のレポートを重複生成しない
-- 手動再実行で壊れた状態が広がらないようにする -->
+- 想定内の失敗と想定外のエラーを区別する
+- 利用者向け表示、DB上の結果、開発者向けログを分ける
+- 取得できなかった情報源はReport内へ記録する
+- password、token、secret、未検証のAI生レスポンスを無条件にログへ出さない
+- 同じ予定のJobを重複生成せず、Reportと状態更新を部分保存しない
+- worker停止をheartbeatで検出できる論理設計を維持する
+- 具体的なログ、監視、復旧手順はIssue #7で決める
 
 ## インフラ・運用方針
 
