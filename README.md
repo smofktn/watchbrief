@@ -29,7 +29,7 @@ MVPでは、次の使い方を想定しています。
 
 まだ利用できるアプリケーションはありません。このリポジトリには、現時点ではプロダクト仕様、システム設計、論理データ設計、開発・運用ルールを置いています。
 
-実装方式、runtime、package manager、DB製品、Job queue、デプロイ方式は未決定です。
+初期構成はEC2 1台にnginx・アプリ・PostgreSQLを同居させ、Ubuntu Server LTSとsystemdを使い、手動でデプロイする方針です。最小骨格にはVue・Goを使います。具体バージョン、ORM、Job queueなどは未決定です。配置・運用の合意事項と設計案は[システム設計](docs/system-design.md)にまとめています。
 
 ## ドキュメント
 

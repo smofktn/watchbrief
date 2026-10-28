@@ -1,7 +1,7 @@
 # WatchBrief DB設計
 
 > [!NOTE]
-> この文書はIssue #3で整理した論理スキーマ案を示す。英語名は実装候補であり、DB製品、物理型、ORM、migration方式は技術選定後に確定する。
+> この文書はIssue #3で整理した論理スキーマ案を示す。初期DB製品はIssue #11でPostgreSQLに決定した。英語名は実装候補であり、バージョン、物理型、ORM、migration方式は今後確定する。
 
 ## 目的とドメインモデルとの関係
 
@@ -12,11 +12,14 @@
 ## スキーマを確定する段階
 
 - Issue #3：保存対象、テーブル案、関係、論理カラム、一意性、削除方針、初期インデックスの要件を整理する。
-- 技術選定後：DB製品とORMに合わせ、物理型、文字数上限、NULL・CHECK制約、インデックス、ロック方式を具体化する。
+- 物理設計時：PostgreSQLと採用するDBアクセス方式に合わせ、物理型、文字数上限、NULL・CHECK制約、インデックス、ロック方式を具体化する。
 - 実装時：migrationとしてレビュー・適用できる形にし、制約、トランザクション、主要クエリを検証する。migration方式自体は未決定である。
 
 ## 保存設計の前提と制約
 
+- 初期DBはPostgreSQLとし、アプリと同じEC2に配置する。将来RDSへ分離する方針にIssue #11で合意し、初期からRDSを使う以前の決定は更新した。PostgreSQLのバージョンと将来の移行先エンジン（Auroraを含む比較）、サイズ、可用性構成、物理型、ORM、migration方式は未決定であり、論理スキーマは維持する。
+- 初期PostgreSQLの正本データは、OS用とは別のDB用EBSに保存し、EC2削除時も保持する（`DeleteOnTermination=false`）。OS用・DB用とも東京リージョンのAWS管理KMS鍵 `aws/ebs` で暗号化する。容量、種類、ファイルシステム、保存場所、権限、マウント、保持後の管理・削除手順は未決定である。詳細は[システム設計](system-design.md#初期ストレージの方針)で扱う。
+- 初期PostgreSQLはEC2内部からの接続に限定し、待受設定とSecurity Groupで外部からの直接接続を許可しない。具体的なアドレス・ポート・ソケット方式、DB認証、保存方法、DB管理操作の具体手順は今後設計する。EC2への管理接続は初期はSSH、将来はSession Managerへ移行する方針とする。将来RDSを使う場合も非公開とし、通常のDB接続元をアプリ実行環境に限定する。
 - 予定された生成を `GenerationJob`、workerによる実際の1回の実行を `GenerationAttempt` として分ける。
 - 待機中のJobにはAttemptが存在しない。実行を開始した場合は、成功・失敗にかかわらずAttemptを残す。
 - 実行開始時はGenerationAttemptの作成とGenerationJobの `running` への変更を同じDBトランザクションで行い、片方だけを残さない。
@@ -53,7 +56,7 @@
 - InformationSourceはWatchTargetごとに0件以上とする。InformationSourceがなくてもWatchTargetを保存でき、最後の1件も削除できる。登録がない場合は、対象名とAIへの補足指示を使って公開情報を調査する。
 - 初期MVPでは、同じWatchTarget内のInformationSource URLについて重複検査や一意制約を設けない。URLの重複防止と正規化は将来の改善候補とする。
 - CollectionとWatchTargetの `display_order` には一意制約を設けない。並べ替えでは関連する行を1つのトランザクションで更新し、取得時は `display_order`、同値の場合はIDの順に並べて表示を安定させる。
-- すべてのエンティティのIDをULIDに統一し、UUIDや整数の自動採番とは使い分けない。DB上の物理型、生成方法、検証方法はDB製品とORMの選定時に決める。
+- すべてのエンティティのIDをULIDに統一し、UUIDや整数の自動採番とは使い分けない。PostgreSQL上の物理型、生成方法、検証方法はORMなどの選定と合わせて決める。
 - Userの `login_id` はアプリ全体で一意とし、DBの一意制約で重複を防ぐ。作成時とログイン時に英字を小文字へ正規化し、DBには英小文字 `a-z`、数字 `0-9`、`_`、`-` だけを1文字以上64文字以下で保存する。
 - User、Collection、CollectionSchedule、WatchTarget、InformationSourceには、汎用的な作成日時と更新日時を持たせる。
 - Collectionは、初回レポートの更新確認開始をAIに任せるか日数で指定するかを持ち、初期値はAIに任せる方式とする。日数指定の場合だけ1以上365以下の遡る日数を持つ。AIも初回開始日時を1日以上365日以下の範囲で選ぶ。現在の状態は、この期間とは別に毎回確認する。
@@ -208,7 +211,7 @@ erDiagram
     }
 ```
 
-`identifier` はULIDを表す。図では論理的な型だけを示し、DB上の物理型はDB製品とORMの選定時に決める。
+`identifier` はULIDを表す。図では論理的な型だけを示し、PostgreSQL上の物理型はORMなどの選定と合わせて決める。
 
 ## 読み方
 
@@ -232,9 +235,13 @@ erDiagram
 
 レポートのMarkdown本文は、構造化データと同じDBを正本とする。初期MVPではDBバックアップと外部アーカイブを実装しない。将来、AWS側のDBバックアップをDB全体の正式な復旧手段、非公開GitリポジトリへのMarkdown保存を本文の副次アーカイブとして追加する。Gitへの保存はDB保存後の独立した処理とし、失敗しても保存済みReportの成功状態を変更しない。
 
+初期のDB用EBS分離・EC2削除時の保持は、正本データをOS・アプリと別ディスクに置いてEC2と連動して削除しないためのものであり、バックアップではない。DB破損や誤削除からの復元は保証しない。
+
+将来RDSへ移す際は、自動バックアップの可否・保持期間などを具体構成の選定時に確認する。初期MVP対象外という合意は、将来利用するRDSの標準機能を無効化する指示ではない。初期EC2構成も将来の移行も、今回の合意だけではバックアップ設定や復元手順・試験を確定せず、データ復旧を保証しない。失って困る実データを継続運用する前に方針を再確認する。
+
 ## 初期インデックス方針
 
-初期MVPでは、次の検索経路を支えるインデックスを用意する。主キーと一意制約によって作られるインデックスは重複して作らない。実際のインデックス定義はDB製品とORMの選定後に確認する。
+初期MVPでは、次の検索経路を支えるインデックスを用意する。主キーと一意制約によって作られるインデックスは重複して作らない。実際のインデックス定義はPostgreSQLと採用するDBアクセス方式に合わせて確認する。
 
 - 一意制約: `users(login_id)`、`collection_schedules(collection_id)`、`generation_jobs(collection_id, scheduled_at)`、`generation_attempts(generation_job_id, attempt_number)`、`reports(generation_attempt_id)`、`report_target_results(report_id, target_id)`、`fact_sources(report_fact_id, report_source_id)`。
 - 設定一覧: `collections(user_id, display_order, id)`、`watch_targets(collection_id, display_order, id)`、`information_sources(watch_target_id, id)`。
@@ -245,7 +252,7 @@ erDiagram
 
 ## 物理設計・実装で具体化すること
 
-- DB製品、ORM、物理テーブル名・カラム名、データ型、文字数上限。
+- PostgreSQLのバージョン、ORM、物理テーブル名・カラム名、データ型、文字数上限。
 - ULIDの保存・生成・検証方法、日時とJSONの物理型。
 - NULL・CHECK制約を含む具体的なDDLとmigration方式。
 - Collection削除とJob作成、workerと停止監視の競合に使う具体的なロック・条件付き更新方式。
