@@ -39,6 +39,7 @@ MVPでは、次の使い方を想定しています。
 - [ドメインモデル](docs/domain-model.md)
 - [DB設計・ER図](docs/database-design.md)
 - [技術選定の前提](docs/technical-direction.md)
+- [作業計画と将来候補](docs/work-plan.md)
 
 ## 公開上の注意
 
