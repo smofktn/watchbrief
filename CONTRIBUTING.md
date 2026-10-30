@@ -54,7 +54,7 @@ WatchBriefは、全体の骨格を整理し、最小のハッピーパスが動�
 
 ## 設定方針
 
-秘密情報をGitと成果物へ含めません。具体的な配置・注入・交換方式は[システム設計の設計案](docs/system-design.md#iamos権限秘密情報)とIssue #1で管理します。
+秘密情報をGitと成果物へ含めません。具体的な配置・注入・交換方式は[システム設計の認証・秘密情報設計](docs/system-design.md#issue-1の認証公開境界秘密情報設計)と、その実装への引き継ぎ先で管理します。
 
 <!-- - 公開可能な例は `config/watchlist.example.yml` に置く
 - 個人的なウォッチ設定は `config/watchlist.yml` に置き、Gitでは追跡しない
