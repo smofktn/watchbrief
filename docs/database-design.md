@@ -1,7 +1,9 @@
 # WatchBrief DB設計
 
+> **Issue #53の既存案について**：以前のAIが作成した未完成の実装案と、それに伴う文書変更を参考として保持している。具体バージョン、ハッシュ、Cookie・CSRF、migration等は、今回利用者と確認したもの以外は採用済みと扱わない。過去の検証結果も今回の実動作確認とは区別する。現在の進め方は[作業計画](work-plan.md#利用者主体で子issueを進める運用合意済み)を参照する。
+
 > [!NOTE]
-> この文書はIssue #3で整理した論理スキーマ案を示す。初期DB製品はIssue #11でPostgreSQLに決定した。英語名は実装候補であり、バージョン、物理型、ORM、migration方式は今後確定する。
+> この文書はIssue #3で整理した論理スキーマ案を示す。初期DB製品はIssue #11でPostgreSQLに決定した。認証のUser・AuthSessionは[Issue #53の物理スキーマ](#issue-53の認証物理スキーマ)として具体化し、それ以外の英語名・物理型は引き続き実装候補とする。
 
 ## 目的とドメインモデルとの関係
 
@@ -13,11 +15,11 @@
 
 - Issue #3：保存対象、テーブル案、関係、論理カラム、一意性、削除方針、初期インデックスの要件を整理する。
 - 物理設計時：PostgreSQLと採用するDBアクセス方式に合わせ、物理型、文字数上限、NULL・CHECK制約、インデックス、ロック方式を具体化する。
-- 実装時：migrationとしてレビュー・適用できる形にし、制約、トランザクション、主要クエリを検証する。migration方式自体は未決定である。
+- 実装時：migrationとしてレビュー・適用できる形にし、制約、トランザクション、主要クエリを検証する。認証部分は[Issue #53の物理スキーマ](#issue-53の認証物理スキーマ)と番号付きSQLへ具体化した。
 
 ## 保存設計の前提と制約
 
-- 初期DBはPostgreSQLとし、アプリと同じEC2に配置する。将来RDSへ分離する方針にIssue #11で合意し、初期からRDSを使う以前の決定は更新した。PostgreSQLのバージョンと将来の移行先エンジン（Auroraを含む比較）、サイズ、可用性構成、物理型、ORM、migration方式は未決定であり、論理スキーマは維持する。
+- 初期DBはPostgreSQLとし、アプリと同じEC2に配置する。将来RDSへ分離する方針にIssue #11で合意し、初期からRDSを使う以前の決定は更新した。認証のローカル対象版・物理型・DBアクセス・migrationは[Issue #53](#issue-53の認証物理スキーマ)で具体化した。将来の移行先エンジン（Auroraを含む比較）、サイズ、可用性構成と他テーブルの物理型等は未決定であり、論理スキーマは維持する。
 - 初期PostgreSQLの正本データは、OS用とは別のDB用EBSに保存し、EC2削除時も保持する（`DeleteOnTermination=false`）。OS用・DB用とも東京リージョンのAWS管理KMS鍵 `aws/ebs` で暗号化する。容量、種類、ファイルシステム、保存場所、権限、マウント、保持後の管理・削除手順は未決定である。詳細は[システム設計](system-design.md#初期ストレージの方針)で扱う。
 - 初期PostgreSQLはEC2内部からの接続に限定し、待受設定とSecurity Groupで外部からの直接接続を許可しない。具体的なアドレス・ポート・ソケット方式、DB認証、保存方法、DB管理操作の具体手順は今後設計する。管理接続は[システム設計](system-design.md#初期sshの接続元と認証)を参照する。将来RDSを使う場合も非公開とし、通常のDB接続元をアプリ実行環境に限定する。
 - 予定された生成を `GenerationJob`、workerによる実際の1回の実行を `GenerationAttempt` として分ける。
@@ -56,7 +58,7 @@
 - InformationSourceはWatchTargetごとに0件以上とする。InformationSourceがなくてもWatchTargetを保存でき、最後の1件も削除できる。登録がない場合は、対象名とAIへの補足指示を使って公開情報を調査する。
 - 初期MVPでは、同じWatchTarget内のInformationSource URLについて重複検査や一意制約を設けない。URLの重複防止と正規化は将来の改善候補とする。
 - CollectionとWatchTargetの `display_order` には一意制約を設けない。並べ替えでは関連する行を1つのトランザクションで更新し、取得時は `display_order`、同値の場合はIDの順に並べて表示を安定させる。
-- すべてのエンティティのIDをULIDに統一し、UUIDや整数の自動採番とは使い分けない。PostgreSQL上の物理型、生成方法、検証方法はORMなどの選定と合わせて決める。
+- すべてのエンティティのIDをULIDに統一し、UUIDや整数の自動採番とは使い分けない。認証部分のPostgreSQL上の物理型、生成方法、検証方法は[Issue #53](#issue-53の認証物理スキーマ)を参照し、他テーブルは実装時に具体化する。
 - Userの `login_id` はアプリ全体で一意とし、DBの一意制約で重複を防ぐ。作成時とログイン時に英字を小文字へ正規化し、DBには英小文字 `a-z`、数字 `0-9`、`_`、`-` だけを1文字以上64文字以下で保存する。
 - User、Collection、CollectionSchedule、WatchTarget、InformationSourceには、汎用的な作成日時と更新日時を持たせる。
 - Collectionは、初回レポートの更新確認開始をAIに任せるか日数で指定するかを持ち、初期値はAIに任せる方式とする。日数指定の場合だけ1以上365以下の遡る日数を持つ。AIも初回開始日時を1日以上365日以下の範囲で選ぶ。現在の状態は、この期間とは別に毎回確認する。
@@ -284,3 +286,29 @@ erDiagram
 - 主要クエリと実行計画に基づくインデックスの調整。
 
 Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実行方式は[システム設計](system-design.md)とIssue #7で具体化する。
+
+## Issue #53の認証物理スキーマ
+
+以下は今回の実装判断であり、その他のテーブルの物理設計を確定しない。DDLの正本は `backend/db/migrations/000001_auth.up.sql`。PostgreSQL 18.6・SQL＋sqlc・pgx/v5を検証対象とし、migrationの実行手順は[ローカル起動](local-development.md)を参照する。
+
+| 保存先 | 型・制約・索引 |
+|---|---|
+| users.id / auth_sessions.id | `text COLLATE "C"`、主キー、26文字の正規ULIDをCHECK（先頭0〜7、Crockford Base32大文字） |
+| users.login_id | `text COLLATE "C" NOT NULL UNIQUE`、`^[a-z0-9_-]{1,64}$` をCHECK。正規化はAPI・コマンドで行う |
+| users.password_hash | `text NOT NULL`、80〜512文字をCHECK。Argon2id PHC形式の厳密検査は共通hash処理で行う |
+| users.created_at / updated_at | `timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP`。UTC接続設定。User作成時は同値。更新機能は #58で更新する |
+| auth_sessions.user_id | `text COLLATE "C" NOT NULL`、users.idへのFK・ON DELETE RESTRICT、非一意B-tree索引 |
+| auth_sessions.token_hash | `bytea NOT NULL UNIQUE`、32byteをCHECK。ランダムtoken元byte列のSHA-256。生tokenは保存しない |
+| auth_sessions.created_at | `timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP`。認証セッション作成時刻。期限判定には使用しない |
+
+ULIDはGoの `oklog/ulid/v2` とcrypto/randで生成する。整数やUUID型へ変換せずtextで保持し、`char(26)`の空白paddingや独自DB extensionを避ける。主キー・一意制約の索引を重複作成しない。セッションの時間失効・最終アクセス日時は追加しない。ログアウトでの削除／無効化は #54、パスワード再設定の競合制御と更新は #58で具体化する。
+
+| ロール | 付与する権限 |
+|---|---|
+| watchbrief_owner | NOLOGIN、public schema・table所有者。通常アプリはメンバーにしない |
+| watchbrief_migrator | LOGIN、NOINHERIT、ownerのメンバー。明示したmigration transaction内でSET ROLE。DB role作成権限なし |
+| watchbrief_api | LOGIN、schema USAGE、users SELECT、auth_sessions SELECT/INSERTのみ。User追加・変更、session削除、DDL、DB role管理は不可 |
+| watchbrief_user_admin | LOGIN、schema USAGE、users INSERTのみ。読み取り・DDL・role管理は不可。Web User作成用でありDB管理者とは異なる |
+| bootstrap | 専用ローカルcluster初期化とDB/role作成の管理者。資格情報をAPIへ渡さない |
+
+PUBLICからdatabaseのCONNECT/CREATE/TEMPとpublic schema権限を剥がし、必要なCONNECTを個別付与する。全LOGIN roleへNOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOBYPASSRLSを明示する。migrationは番号付きSQLをpsqlで明示適用し、schema_migrationsの版・DDLを同じtransactionで確定する。APIの起動時にDDLを実行しない。権限・制約の試験SQLは `backend/db/verify.sql`。実行状況は[検証記録](verification-issue-53.md)を参照する。
