@@ -25,7 +25,11 @@
 
 Issue #53は[現在の基本設計案](system-design.md#issue-53の基本設計)を起点に読む。FrontendはVue 3・TypeScript・Vite・PrimeVueに合意し、画面・APIの具体案は相談中である。[旧AI案の認証方式](auth-implementation.md)、[起動手順](local-development.md)、[検証記録](verification-issue-53.md)は参考文書として保持する。今回の採用決定・実装・動作確認と区別する。
 
+共通パスワードハッシュの現在の初期プロファイルと部品の検証手順は[共通パスワードハッシュ](password-hashing.md)を参照する。User作成やAPIへの接続とは区別する。
+
 ## 読み方と更新先
+
+現在のローカル実行手順は[Frontend](../frontend/README.md)、[Backend](../backend/README.md)、[PostgreSQL](local-postgresql.md)を参照する。旧AI案のローカル手順とは区別する。
 
 初めて読む場合は、プロダクト仕様→システム設計の論理構成・処理フロー→ドメインモデル→DB設計の順に読む。技術選定と作業の着手先は必要に応じて参照する。
 

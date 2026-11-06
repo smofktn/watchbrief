@@ -80,7 +80,7 @@
 | `user_id` | 必須。Userへの外部キー。User削除は初期MVPで提供せず、参照中の削除はRESTRICTで拒否 |
 | `token_hash` | 必須・一意。crypto/randで作る32byte乱数のSHA-256。生トークンは保存せず、Cookieの値から計算して照合する |
 
-Userは0件以上の認証セッションを持ち、各セッションは必ず1 Userに属する。APIは `token_hash` の一意検索を使う。認証成功時に保存し、ログアウト後は同じトークンで認証できないよう無効化する。トークン生成・ハッシュとCookie更新は[現在の基本設計](system-design.md#issue-53の基本設計)の合意に従う。無効化の物理削除・状態記録の選択、必要な日時項目、追加索引、Cookie用の文字列表現・厳密検証と不要レコード整理は実装・物理設計で具体化する。時間による失効や複数端末ログアウト管理を今回追加するものではない。
+Userは0件以上の認証セッションを持ち、各セッションは必ず1 Userに属する。APIは `token_hash` の一意検索を使う。認証成功時に保存し、ログアウト後は同じトークンで認証できないよう無効化する。トークン生成・ハッシュとCookie更新は[現在の基本設計](system-design.md#issue-53の基本設計)の合意に従う。無効化の物理削除・状態記録の選択、必要な日時項目、追加索引、Cookieの厳密検証と不要レコード整理は実装・物理設計で具体化する。ログイン側のCookie表現はパディングなしBase64URL、DBは元32byteのSHA-256（bytea・32byte）とする。時間による失効や複数端末ログアウト管理を今回追加するものではない。
 
 管理コマンドによるパスワード再設定時は例外として、Userのパスワードハッシュ更新と、そのUserに属する既存セッションすべての無効化を同じDBトランザクションで確定する。途中で失敗した場合は全体をロールバックし、片方だけを残さない。他Userのセッション、Collection設定、Job・Attempt・Reportは更新しない。無効化方法と `user_id` からの処理に必要な索引は物理設計で決める。同時ログイン・同時再設定との競合でも旧パスワードで認証したセッションが無効化をすり抜けないよう、具体的な排他制御を詳細設計・試験する。再設定方針を表す追加カラムはここで固定せず、無効化方式に応じて物理設計で選ぶ。
 
@@ -296,7 +296,7 @@ Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実
 | `users.id` | `text` | 主キー。26文字の正規ULIDを検証 |
 | `users.login_id` | `text` | NOT NULL・UNIQUE。小文字の `a-z`・数字・`_`・`-`、1〜64文字をCHECK。正規化はアプリで行う |
 | `users.password_hash` | `text` | NOT NULL。方式・パラメーター・saltを含むハッシュ文字列を保存。具体的な符号化・上限は実装時に確認 |
-| `users.created_at` / `updated_at` | `timestamptz` | NOT NULL。Userの作成・更新日時。日時を持つ方針は既存合意。具体型のtimestamptz・既定値等は実装時の候補 |
+| `users.created_at` / `updated_at` | `timestamptz` | NOT NULL。Userの作成・更新日時。日時を持つ方針は既存合意。具体型はtimestamptz、既定値はCURRENT_TIMESTAMPを使用 |
 | `auth_sessions.id` | `text` | 主キー。認証トークンとは別のULIDを検証 |
 | `auth_sessions.user_id` | `text` | NOT NULL、Userへの外部キー。参照中のUser削除はRESTRICT |
 | `auth_sessions.token_hash` | `bytea` | NOT NULL・UNIQUE、32byteをCHECK。元トークンのSHA-256の結果を保存 |
@@ -305,7 +305,9 @@ Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実
 
 セッションに期限・最終アクセス日時は追加しない。セッション作成日時の要否は未決定とし、旧AI案にあることだけで追加しない。1 Userに複数セッションを持てる既存関係を維持する。User作成コマンドとAPIの権限分離、DBからの所有者昇格拒否等はDDLの設計と合わせて検証する。
 
-一次情報：[PostgreSQL文字列型](https://www.postgresql.org/docs/current/datatype-character.html)、[バイナリー型](https://www.postgresql.org/docs/current/datatype-binary.html)、[制約](https://www.postgresql.org/docs/current/ddl-constraints.html)。保存構成と型の採用は文書上の合意であり、DDL適用・DB接続・制約の実動作は未確認。
+一次情報：[PostgreSQL文字列型](https://www.postgresql.org/docs/current/datatype-character.html)、[バイナリー型](https://www.postgresql.org/docs/current/datatype-binary.html)、[制約](https://www.postgresql.org/docs/current/ddl-constraints.html)。保存構成・型の合意と現在のDDLは次のとおり。実行した検証結果と未確認の範囲はIssueへ記録する。
+
+現在のDDLは [goose migration](../backend/db/goose/000001_create_auth.sql) で管理する。ID・login_idはASCII条件を明確にするためC照合順序とCHECKを使い、ULIDは先頭0〜7の正規大文字26文字を検証する。Userの日時はtimestamptzとCURRENT_TIMESTAMPを使う。セッション作成日時・期限・最終アクセス日時は追加しない。ハッシュ保存には[共通Argon2id](password-hashing.md)のPHC形式を使う。NFCは保存前・照合前の入力へ適用し、生パスワードをDBへ保存するカラムは追加しない。DBは現段階ではハッシュ文字列の非空だけを検証する。実行手順と権限は[ローカルPostgreSQL](local-postgresql.md#テーブルmigration)を参照する。以下の旧AI案のSQLファイルや制約を現在の正本とはしない。
 
 ### 用途別のDB権限（合意済み）
 
@@ -319,7 +321,9 @@ Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実
 
 初期のDB・ロール作成は別の管理操作とし、APIやUser作成コマンドへsuperuserを渡さない。対象テーブルの所有権と所有者ロールへのmembershipも分け、通常APIがSET ROLE等でDDL権限を得られないようにする。接続に必要なCONNECT・schema USAGE等、具体ロール名・資格情報の注入方法・goose用の所有権は実装時に具体化する。接続情報をそれぞれ用意する手間は増すが、通常APIの不具合等で変更できる範囲を限定できる。
 
-これはPostgreSQLへの接続権限であり、アプリのログインUserの区別とは別物。認証済みUserが自分の情報だけを取得できるAPIの認可も維持する。#54のログアウト、#58の再設定等で必要な追加権限は、そのIssueで必要性を確認する。[PostgreSQLのロール](https://www.postgresql.org/docs/current/user-manag.html)・[権限](https://www.postgresql.org/docs/current/ddl-priv.html)を根拠とする。用途別の分担の合意であり、物理ロール・権限の実動作は未確認。
+これはPostgreSQLへの接続権限であり、アプリのログインUserの区別とは別物。認証済みUserが自分の情報だけを取得できるAPIの認可も維持する。#54のログアウト、#58の再設定等で必要な追加権限は、そのIssueで必要性を確認する。[PostgreSQLのロール](https://www.postgresql.org/docs/current/user-manag.html)・[権限](https://www.postgresql.org/docs/current/ddl-priv.html)を根拠とする。用途別の分担の合意と、以下のローカル初期設定・テーブル権限の実装範囲を区別する。
+
+現在のローカル初期設定では、接続ロールを `watchbrief_api`・`watchbrief_user_creator`・`watchbrief_migrator` とし、migration用が `app` schemaを直接所有する。API・User作成用は所有者へのmembershipを持たない。手順・秘密ファイル・初期権限は[ローカルPostgreSQL](local-postgresql.md#用途別の初期設定)で管理する。上表のSELECT/INSERTは現在の認証migrationで付与する。実行した権限試験と未検証範囲はIssueへ記録する。
 
 ## Issue #53の認証物理スキーマ
 

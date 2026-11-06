@@ -458,37 +458,37 @@ DB保存とCookie配信を1つのトランザクションにはできない。�
 
 パスワード専用のハッシュ方式としてArgon2idを採用する。ユーザー作成時はランダムなsaltとパスワードからハッシュを作り、方式・パラメーター・salt・ハッシュを保存する。ログイン時は保存した情報を使って入力パスワードを照合する。生パスワードを保存せず、復号して照合する方式にしない。管理コマンドとAPIは同じ実装を共有する。
 
-Goの `golang.org/x/crypto/argon2` を外側の実装として使う案。saltの生成、保存形式、パラメーターの検証・比較処理、ライブラリ版、処理負荷・同時実行数は実装前に具体化する。パスワードの入力条件は次節の合意に従う。Argon2idという方式と共通処理の採用は合意済みだが、旧AI案の具体パラメーターやコードをそのまま採用する決定ではない。[OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)、[Go argon2](https://pkg.go.dev/golang.org/x/crypto/argon2)を根拠とする。
+Goの `golang.org/x/crypto/argon2` を外側の共通実装として使う。今回の初期プロファイルはRFC 9106の省メモリ向け第二推奨に基づく64MiB・反復3・並列度4、salt16byte・ハッシュ32byteのPHC形式。同時実行は共有インスタンスあたり2件まで。版・保存形式の検証・比較・キャンセル・利用上の制限は[共通ハッシュの詳細](password-hashing.md)にまとめる。パスワードの入力条件は次節の合意に従う。Argon2idという方式と共通処理の採用は合意済みだが、旧AI案の具体パラメーターやコードをそのまま採用する決定ではない。[OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)、[Go argon2](https://pkg.go.dev/golang.org/x/crypto/argon2)を根拠とする。
 
 ### パスワード入力条件（合意済み）
 
-15〜128文字を許可し、英字・数字・記号の組合せを必須にしない。文字数はUnicodeコードポイントとして数える。日本語・記号・スペースも使え、前後の空白を勝手に削除せず、大文字・小文字を区別し、長い入力を黙って切り捨てない。管理コマンド・APIで同じ条件を使い、画面にもその条件を示す。
+15〜128文字を許可し、英字・数字・記号の組合せを必須にしない。作成時・ログイン時ともNFCでそろえてから文字数をUnicodeコードポイントとして数え、ハッシュ化・照合する。確認入力もNFC後の値で比較する。日本語・記号・スペースも使え、前後の空白を勝手に削除せず、大文字・小文字を区別し、長い入力を黙って切り捨てない。管理コマンド・APIで同じ条件を使い、画面にもその条件を示す。
 
-最低15文字はパスワード単独認証に関する[NISTの長さの推奨](https://pages.nist.gov/800-63-4/sp800-63b.html#passwordver)を参考にする。上限128文字は長いパスフレーズ等を許可しつつ入力を無制限にしないために採用した値であり、NISTが128文字を指定しているという意味ではない。短いパスワードより入力は長くなるが、文字種の組合せルールを覚える必要がない。見た目の1文字が複数コードポイントとなる場合の画面への説明、Unicode正規化・制御文字・弱いパスワードの拒否等の詳細は実装前に整理する。この一部の条件を参考にすることだけでNIST全要件に準拠したと扱わない。
+最低15文字はパスワード単独認証に関する[NISTの長さの推奨](https://pages.nist.gov/800-63-4/sp800-63b.html#passwordver)を参考にする。上限128文字は長いパスフレーズ等を許可しつつ入力を無制限にしないために採用した値であり、NISTが128文字を指定しているという意味ではない。短いパスワードより入力は長くなるが、文字種の組合せルールを覚える必要がない。見た目の1文字が複数コードポイントとなる場合の画面への説明、制御文字・弱いパスワードリスト等の追加拒否の詳細は未決定・未実装。NFCは採用済みであり、互換文字・全角半角の違いをそろえるNFKCとは区別する。この一部の条件を参考にすることだけでNIST全要件に準拠したと扱わない。
 
 ### 認証トークンの生成・照合（合意済み）
 
-Goのcrypto/randで32byte（256bit）の乱数を作り、Cookieに載せられる文字列にしてブラウザへ渡す。DBへは元の乱数byte列のSHA-256だけを保存し、本人情報APIではCookieの文字列をデコードして元のbyte列へ戻し、同じハッシュを計算して、セッションを検索する。ULIDはセッション記録IDとして別に生成する。Cookie用の文字列表現・厳密な検証方法は実装前に具体化する。
+Goのcrypto/randで32byte（256bit）の乱数を作り、Cookieに載せられる文字列にしてブラウザへ渡す。DBへは元の乱数byte列のSHA-256だけを保存し、本人情報APIではCookieの文字列をデコードして元のbyte列へ戻し、同じハッシュを計算して、セッションを検索する。ULIDはセッション記録IDとして別に生成する。ログイン実装はパディングなしBase64URL（43文字）でCookieへ載せる。名前・属性は[API共通仕様](API仕様/README.md)を参照する。本人情報APIはCookieの厳密なデコード後、SHA-256でセッションとUserをJOIN検索し、同じCookieの期限を更新する。重複・不正形式の拒否はAPI仕様に従う。DBセッションの期限や最終アクセス記録は追加しない。
 
 人間が選ぶパスワードは推測されやすいためArgon2idで推測を遅くする。一方、このトークンは十分な長さの暗号学的乱数なので、速いSHA-256で照合しても総当たりを困難にでき、DBの索引検索にも使える。DBに保存したハッシュそのものは認証トークンとして受け付けない。トークンを知る者は認証できるため、Cookie・ログ・レスポンスへの露出を制限する既存方針を維持する。32byte乱数・SHA-256による照合とULIDの分離に合意済みであり、Cookie用の符号化や入力検証の具体方法は別途具体化する。[Go crypto/rand](https://pkg.go.dev/crypto/rand)、[OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)を根拠とする。
 
 ### 架空User作成コマンド（操作フロー合意済み）
 
-IDを引数指定し、パスワードを2回非表示入力して検証・保存する操作フローに合意した。操作例は `user-create --login-id fictional_user`。コマンド名・実行ファイルの配置は仮であり、現時点でこのコマンドを動かせるという意味ではない。IDは引数で指定し、アプリのログインパスワードは端末から2回、表示しない方式で入力する。入力と確認が一致し、共通の条件を満たせば、UserのULIDとArgon2idハッシュを作成してDBへ保存する。成功時は作成完了を表示する。
+IDを引数指定し、パスワードを2回非表示入力して検証・保存する操作フローに合意した。操作例は `make user-create LOGIN_ID=fictional_user`。現在の管理コマンドは `backend/cmd/user-create`。実行手順は[Backend](../backend/README.md#架空userの作成)を参照する。IDは引数で指定し、アプリのログインパスワードは端末から2回、表示しない方式で入力する。入力と確認が一致し、共通の条件を満たせば、UserのULIDとArgon2idハッシュを作成してDBへ保存する。成功時は作成完了を表示する。
 
 IDの重複は既存合意どおりDB一意制約で拒否し、既存Userの上書きやパスワード変更はしない。不一致・入力不正では保存しない。DB接続はAPIの通常用と分けた管理操作用を使う。DB接続の資格情報とアプリのログインパスワードは別物であり、いずれも引数・履歴・ログ・Gitへ残さない。Web画面でのUser作成は提供しない。
 
-端末入力はGoの[x/term.ReadPassword](https://pkg.go.dev/golang.org/x/term#ReadPassword)等を使う案。秘密を非表示で読めない環境では停止し、表示される入力へ自動的に切り替えない。具体ライブラリ・版・設定ファイル・管理用DBロール名は実装前に具体化する。操作フローの合意であり、旧AI案のコードやライブラリ版を採用する決定ではない。
+端末入力はGoの[x/term.ReadPassword](https://pkg.go.dev/golang.org/x/term#ReadPassword)とLinuxの端末制御を使う。秘密を非表示で読めない環境では停止し、表示される入力へ自動的に切り替えない。x/term v0.47.0とULID v2.1.2を使用し、watchbrief_user_creatorで保存する。現在の入力処理・資格情報・失敗時の扱いはBackendの手順へまとめる。旧AI案のCLIは現在の実装へ置き換えた。
 
-### ローカル起動構成案（未合意）
+### ローカル起動構成（合意済み）
 
-ローカル検証では、Vue/ViteとGo API・管理コマンド・gooseをホストOS上で動かし、PostgreSQLだけDockerの公式イメージで動かす案を推奨する。Go・Node.jsはasdfで具体版を管理し、DBデータはDockerの永続volumeへ置く。コード・migration・公開可能な起動設定をGitで管理し、DB状態・接続秘密・ログはGitへ含めない。
+ローカル検証では、Vue/ViteとGo API・管理コマンド・gooseをホストOS上で動かし、PostgreSQLだけDockerの公式イメージで動かす構成を採用する。Go・Node.jsはasdfで具体版を管理し、DBデータはDockerの永続volumeへ置く。コード・migration・公開可能な起動設定をGitで管理し、DB状態・接続秘密・ログはGitへ含めない。
 
 Dockerを使わずPostgreSQLをOSへ直接導入する案では、Linux上のDBサービス管理をその場で学べる一方、OSへの導入・版管理・起動設定の作業が増える。Docker案はDB起動環境を再現しやすいが、Dockerの接続権限・volume・ポート公開の理解が必要になる。Go・Vue側はホスト上で直接起動・デバッグできる形を保つ。
 
-DBへのホストからの接続はloopbackへ限定する案とし、アプリとDBの資格情報を分ける。具体的なDB版・image tag、volumeのmount先、認証・秘密の注入、起動順・正常応答の確認、接続権限は実装前に確認する。Docker CLIがあることだけではdaemon接続やDB起動が可能と判断しない。既存データの初期化・volume削除は起動手順に含めない。
+DBへのホストからの接続はloopbackへ限定し、アプリとDBの資格情報を分ける。ローカルDBはPostgreSQL 18.6の公式bookwormイメージとし、volume・秘密ファイル・起動方法は[ローカルPostgreSQL](local-postgresql.md)に従う。アプリ・管理操作の接続権限は次の実装で具体化する。Docker CLIがあることだけではdaemon接続やDB起動が可能と判断しない。既存データの初期化・volume削除は起動手順に含めない。
 
-これはローカル用の提案であり、AWSの初期EC2・systemd・同居PostgreSQLという配備方針や、本番コンテナ化を後続Issueへ置く合意は変更しない。実行・環境構築は未実施。[Postgres公式イメージ](https://github.com/docker-library/docs/blob/master/postgres/README.md)、[Dockerの永続データ](https://docs.docker.com/get-started/docker-concepts/running-containers/persisting-container-data/)を参照する。
+これはローカル用の合意であり、AWSの初期EC2・systemd・同居PostgreSQLという配備方針や、本番コンテナ化を後続Issueへ置く合意は変更しない。現在の起動設定と秘密・永続データの扱いは[ローカルPostgreSQL](local-postgresql.md)へまとめる。認証テーブル・DB権限分離・アプリ接続の実装とは区別する。[Postgres公式イメージ](https://github.com/docker-library/docs/blob/master/postgres/README.md)、[Dockerの永続データ](https://docs.docker.com/get-started/docker-concepts/running-containers/persisting-container-data/)を参照する。
 
 ### 詳細化と最初の検証案
 

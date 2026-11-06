@@ -6,8 +6,8 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 
 | API | 仕様書 | 合意状況 |
 |---|---|---|
-| `POST /api/login` | [ログイン](post-api-login.md) | パス・役割・ログイン後に本人情報を別取得する流れに合意。ステータス・JSON等の詳細は提案 |
-| `GET /api/me` | [本人情報取得](get-api-me.md) | パス・役割・Cookieによる本人特定に合意。ステータス・JSON等の詳細は提案 |
+| `POST /api/login` | [ログイン](post-api-login.md) | パス・役割・正常204（本文なし・Cookie発行）・その後の本人情報取得に合意。入力JSONのlogin_id・passwordに合意。主要エラーは共通表に合意。その他の詳細は未決定 |
+| `GET /api/me` | [本人情報取得](get-api-me.md) | パス・役割・Cookieによる本人特定・正常200とlogin_idのJSONに合意。主要エラーは共通表に合意。その他の詳細は未決定 |
 
 対象は [Issue #53](https://github.com/smofktn/watchbrief/issues/53)。ログアウト等の後続APIは、そのIssueの設計時に追加する。
 
@@ -22,9 +22,9 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 
 ## 共通の認証と秘密情報
 
-**合意済み**：ID・パスワード認証とPostgreSQLのサーバー側セッションを使う。ブラウザへはランダムトークンをCookieで渡し、DBには照合用ハッシュを保存する。トークンはGoのcrypto/randで生成する32byte（256bit）の乱数とし、DBには元byte列のSHA-256だけを保存する。[生成・照合の設計](../system-design.md#認証トークンの生成照合合意済み)に従い、Cookie用の文字列表現と厳密な検証方法は実装前に決める。セッション記録IDのULIDは認証トークンとは別物。時間・無操作によるセッション失効は追加しない。
+**合意済み**：ID・パスワード認証とPostgreSQLのサーバー側セッションを使う。ブラウザへはランダムトークンをCookieで渡し、DBには照合用ハッシュを保存する。トークンはGoのcrypto/randで生成する32byte（256bit）の乱数とし、DBには元byte列のSHA-256だけを保存する。[生成・照合の設計](../system-design.md#認証トークンの生成照合合意済み)に従い、CookieにはパディングなしBase64URL（43文字）で表現する。本人情報APIは43文字・Strictデコード・32byte・再エンコード一致を検証する。不正・同名Cookieの重複はDB照合前に401とする。セッション記録IDのULIDは認証トークンとは別物。時間・無操作によるセッション失効は追加しない。
 
-Cookieの保護属性とCSRFの基本方式は[次節](#cookieの保護とcsrf合意済み)のとおり合意済み。保存期間と更新も[次の合意](#cookieの保存更新合意済み)に従う。Cookie名・Path、ローカルHTTP時の扱い、送信元の具体的な設定・proxy接続は実装前に具体化する。本人情報をUser IDの入力で指定するAPIにはしない。
+Cookieの保護属性とCSRFの基本方式は[次節](#cookieの保護とcsrf合意済み)のとおり合意済み。保存期間と更新も[次の合意](#cookieの保存更新合意済み)に従う。ログイン実装では名前を `watchbrief_session`、Pathを `/` とする。画面のOriginはAPP_ORIGINで指定し、ViteはHost・Originを書き換えず中継する。これらは既存合意を具体化する実装上の選択であり、旧AI案の一括採用ではない。本人情報をUser IDの入力で指定するAPIにはしない。
 
 パスワード・Cookie・生トークン・パスワードハッシュ・接続設定をログや公開レスポンスへ含めない。認証トークンをJSONで返す方式や、VueがトークンをlocalStorageへ保存する方式は今回の提案に含めない。
 
@@ -35,7 +35,7 @@ Goが `Set-Cookie` で属性を指定し、ブラウザが保存・送信時に�
 | 属性 | 採用する設定と目的 |
 |---|---|
 | `HttpOnly` | 有効。Vue等のJavaScriptからトークンを読み取らせない。ブラウザによるAPIへのCookie送信は行われる |
-| `Secure` | 本番HTTPS時に有効。ローカルHTTP開発時の扱いは別途具体化する |
+| `Secure` | APP_ORIGINがHTTPSなら有効。HTTPではlocalhost・ループバックIPだけを許可して無効とし、他のHTTP Originでは起動しない |
 | `SameSite` | `Lax` を明示。別サイトからのCookie送信を制限しつつ、通常のリンクからの訪問を妨げにくくする |
 | `Domain` | 指定しない。Cookieを発行元ホストに限定し、別サブドメインへ共有しない |
 
@@ -45,7 +45,7 @@ Go標準の防御は `Sec-Fetch-Site`・`Origin` 等を参照するが、両方�
 
 この方式はブラウザからの意図しない操作を防ぐもので、認証の代わりではない。`Origin` を偽装できるブラウザ外のクライアントにも、有効なパスワード・認証トークンが必要である。`HttpOnly` も、XSS成立時のあらゆる操作を防ぐ保証ではない。Cookie属性だけにCSRF防御を任せない。
 
-一次情報：[MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)、[Go CrossOriginProtection](https://pkg.go.dev/net/http#CrossOriginProtection)、[OWASP CSRF](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#fetch-metadata-headers)。Vite・将来のnginxを経由したときのHost・Originの扱いと、正規要求の成功・外部Origin等の拒否は実装時に検証する。現時点では未確認。
+一次情報：[MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)、[Go CrossOriginProtection](https://pkg.go.dev/net/http#CrossOriginProtection)、[OWASP CSRF](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#fetch-metadata-headers)。Vite経由のログインは実装済み。将来のnginx・本番TLS環境は別途検証する。時点ごとの検証結果はIssueへ記録する。
 
 ## Cookieの保存・更新（合意済み）
 
@@ -57,29 +57,31 @@ Go標準の防御は `Sec-Fetch-Site`・`Origin` 等を参照するが、両方�
 
 [主な失敗時の画面表示](../product-definition.md#issue-53で最初に確認する画面)は合意済み。入力不正、認証失敗、本人情報取得時の未認証、通信失敗、内部障害を区別する。画面の文言と動作の正本はプロダクト仕様とし、ここへ重複して持たない。
 
-以下の通信契約はすべて**提案**。HTTPステータス・コード名・JSON形式、および画面文言をAPIから返すか画面側で選ぶかは、まだ合意していない。下のJSON例は合意済みの内部障害向け文言を用いているが、それによってJSON形式まで採用済みになるものではない。
+**合意済み**：エラーは必須の `error.code`・`error.message` を持つJSONとする。画面はcodeで判定し、messageの文字列へ分岐を依存させない。messageには利用者向けの固定文言を使い、SQL・内部例外・入力された秘密値を返さない。既存の画面文言はプロダクト仕様を正本とする。未定義の文言や入力欄ごとの詳細情報は未決定。
 
-| 項目 | 提案 |
-|---|---|
-| JSON応答 | `Content-Type: application/json` |
-| キャッシュ | 認証・本人情報の応答に `Cache-Control: no-store` |
-| エラー形式 | 下記の `error.code` と `error.message` を持つJSON |
-| メッセージ | 利用者向けの固定文言。SQL・内部例外・入力された秘密値を含めない |
-| エラー判定 | 画面は `code` を判定に使い、`message` の文字列に依存しない |
+| ステータス | コード | 分類 | 状態 |
+|---|---|---|---|
+| `400` | `invalid_request` | 入力不正 | 合意済み |
+| `401` | `invalid_credentials` | ログインID・パスワード不一致。未知IDも区別しない | 合意済み |
+| `401` | `unauthenticated` | 本人情報取得時の未認証 | 合意済み |
+| `403` | `csrf_rejected` | CSRF拒否 | 合意済み |
+| `500` | `internal_error` | 内部障害 | 合意済み |
+
+現在のログイン実装はJSONエラーにContent-Typeを指定し、成功・エラーとも `Cache-Control: no-store` を付ける。ログインの413・415応答、最終的な上限値・エラー評価順等は引き続き提案・未決定とする。これらの保留は、入力検証や秘密情報保護を省略する判断ではない。
 
 ```json
 {
   "error": {
     "code": "internal_error",
-    "message": "処理に失敗しました。時間をおいて再度お試しください。"
+    "message": "処理に失敗しました。時間をおいて再度お試しください"
   }
 }
 ```
 
-| JSONフィールド | 型 | 必須案 | 説明 |
+| JSONフィールド | 型 | 必須 | 説明 |
 |---|---|---|---|
 | `error` | object | 必須 | エラー情報 |
-| `error.code` | string | 必須 | APIごとの表に示す識別用コード |
+| `error.code` | string | 必須 | 共通表で合意した識別用コード。API固有の提案は各仕様で区別する |
 | `error.message` | string | 必須 | 表示可能な固定メッセージ |
 
 通信切断ではHTTPレスポンス自体を受け取れない場合がある。画面は認証拒否と通信・内部障害を区別し、通信失敗だけで未ログインやログイン成功を断定しない。
@@ -90,4 +92,4 @@ Go標準の防御は `Sec-Fetch-Site`・`Origin` 等を参照するが、両方�
 
 このディレクトリは初回の設計資料として終わらせず、継続して保守する通信契約とする。APIの追加・変更時は、対応する仕様書と実装・テストを同じ変更で更新し、[画面仕様](../画面仕様/README.md)の入力・表示・状態との対応も確認する。画面の配置・操作は画面仕様に置き、API仕様へ重複して持たない。仕様書には現在の契約・未決定事項・確認観点を残し、時点に依存する検証結果と未確認の範囲はIssue・PRへ記録する。
 
-現在は設計文書のみであり、Swagger UI表示、OpenAPIの機械的検証、API実装との一致、実HTTP通信の検証は未実施。完全なOpenAPI定義や生成ツールの採用は別途判断する。
+現在はログインAPI・本人情報API・認証成功時のCookie期限更新を実装済み。Swagger UI・完全なOpenAPI定義・コード生成ツールの採用は別途判断する。抜粋YAMLには未採用の提案も残るため、完成した実装契約として一括利用しない。

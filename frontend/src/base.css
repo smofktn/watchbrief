@@ -1,0 +1,35 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+}
+
+main {
+  max-width: 30rem;
+  margin: 3rem auto;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+form,
+.field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+form {
+  gap: 1.25rem;
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
