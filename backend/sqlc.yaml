@@ -1,0 +1,12 @@
+version: '2'
+sql:
+  - engine: postgresql
+    queries: db/current-queries
+    schema:
+      - db/sqlc-schema.sql
+      - db/goose
+    gen:
+      go:
+        package: generated
+        out: internal/adapter/postgres/generated
+        sql_package: pgx/v5

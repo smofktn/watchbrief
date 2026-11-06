@@ -9,8 +9,9 @@
 | 後続の呼び出し | Cookie保存後に [`GET /api/me`](get-api-me.md) で本人情報を取得する | 合意済み |
 | 既存の認証 | 不要。未ログインの利用者が呼ぶ | 合意済みの役割からの前提 |
 | `operationId` | `login` | 提案 |
-| 正常ステータス | `204 No Content` | 提案 |
-| JSON・ヘッダー・エラー詳細 | 下記の定義 | 提案・一部未決定 |
+| 正常ステータス | `204 No Content`、本文なしでCookie発行 | 合意済み |
+| 入力JSON | 必須の文字列 `login_id`・`password` を本文に送る | 合意済み |
+| ヘッダー・エラー詳細 | 下記の定義 | 提案・一部未決定 |
 
 [共通事項](README.md)と[基本設計](../system-design.md#issue-53の基本設計)も参照する。
 
@@ -28,12 +29,12 @@
 
 ### Request body
 
-次のJSON形式は**提案**。秘密値をURL・クエリへ含めない。
+次のJSON形式は**合意済み**。必須の文字列 `login_id`・`password` をリクエスト本文で送り、秘密値をURL・クエリへ含めない。不明フィールド等の解析の詳細は未決定。
 
-| フィールド案 | 型 | 必須案 | 制約・扱い |
+| フィールド | 型 | 必須 | 制約・扱い |
 |---|---|---|---|
 | `login_id` | string | 必須 | 英大文字を小文字へ正規化し、`a-z`・数字・`_`・`-`、1〜64文字を検証する。ID条件自体は既存合意 |
-| `password` | string | 必須 | Argon2idの共通処理で照合する。15〜128文字、文字種混在不要、日本語・スペース等も許可し、前後の空白を削らず大文字・小文字を区別する。入力条件は[プロダクト仕様](../product-definition.md#ユーザーと認証)に合意済み。具体パラメーター等は未決定 |
+| `password` | string | 必須 | Argon2idの共通処理で照合する。NFC後15〜128コードポイント、文字種混在不要、日本語・スペース等も許可し、前後の空白を削らず大文字・小文字を区別する。入力条件は[プロダクト仕様](../product-definition.md#ユーザーと認証)に合意済み。具体プロファイルは[共通ハッシュ](../password-hashing.md)を参照 |
 
 ```json
 {
@@ -46,17 +47,17 @@
 
 ## レスポンス
 
-### 正常系案：204 No Content
+### 正常系：204 No Content（合意済み）
 
-本文を返さず、DBへセッションを保存できた場合だけ `Set-Cookie` を返す。Cookieの保護属性は[共通仕様](README.md#cookieの保護とcsrf合意済み)に従う。保存更新も[共通仕様](README.md#cookieの保存更新合意済み)に従う。名前・Path、ローカルHTTP時の扱いは未決定。`204` でもヘッダーでCookieを渡す案であり、JSONにトークンや本人情報を返さない。[共通の応答案](README.md#共通の応答案)のキャッシュ抑止を適用する。
+本文を返さず、DBへセッションを保存できた場合だけ `Set-Cookie` を返す。Cookieの保護属性は[共通仕様](README.md#cookieの保護とcsrf合意済み)に従う。保存更新も[共通仕様](README.md#cookieの保存更新合意済み)に従う。名前はwatchbrief_session、Pathは `/`。ローカルHTTPと文字列表現は共通仕様に従う。`204` でもヘッダーでCookieを渡し、JSONにトークンや本人情報を返さない。[共通の応答案](README.md#共通の応答案)のキャッシュ抑止を適用する。
 
 ブラウザはCookieを保存し、画面は本人情報APIを呼ぶ。その取得に成功するまでログインIDの表示を完了しない。
 
-### エラー応答案
+### エラー応答（合意済みと提案）
 
-本文は[共通エラー形式案](README.md#共通の応答案)。下記のステータス・コード・分類は提案であり、評価順や複数の不備が重なった場合の優先順位は実装前に整理する。
+本文は[共通エラー形式](README.md#共通の応答案)。400・401・403・500のステータスとコード・分類は合意済み。413・415および上限値、評価順や複数の不備が重なった場合の優先順位は提案・未決定。保存・Cookieの扱いは既存の認証・整合性の合意を維持する。
 
-| ステータス案 | `error.code` 案 | 状況 | 保存・Cookieの扱い案 |
+| ステータス | `error.code` | 状況 | 保存・Cookieの扱い案 |
 |---|---|---|---|
 | `400` | `invalid_request` | JSON形式・必須項目・型・入力条件が不正 | 認証・保存へ進めず、発行しない |
 | `401` | `invalid_credentials` | 未知のID、またはパスワード不一致 | セッションを作らず、発行しない。2つの理由を画面で区別しない |
@@ -69,7 +70,7 @@
 
 ## OpenAPI風の定義（抜粋・提案）
 
-以下は `paths` に相当するYAMLの抜粋。`x-design-status` は設計上の注記。Cookie・CSRFの合意済み条件は共通仕様に従う。Cookie名・Path・ローカルHTTP時の扱い等が未決定のため、この抜粋だけを完成した認証仕様として扱わない。
+以下は `paths` に相当するYAMLの抜粋。`x-nfc-min-code-points`・`x-nfc-max-code-points` はNFC後の条件を示す独自注記であり、標準JSON Schemaの長さ制約ではない。`x-design-status` は設計上の注記。Cookie・CSRFの合意済み条件は共通仕様に従う。413・415等には未採用の提案が残るため、この抜粋だけを完成した実装契約として扱わない。
 
 ```yaml
 paths:
@@ -78,7 +79,7 @@ paths:
       operationId: login
       summary: ID・パスワードでログインする
       tags: [Authentication]
-      x-design-status: proposed-details
+      x-design-status: partially-agreed
       description: 既存ログインは不要。Go標準CSRF防御とOrigin完全一致検証をログイン前から適用する。
       parameters:
         - name: Origin
@@ -88,6 +89,7 @@ paths:
           schema:
             type: string
       requestBody:
+        x-design-status: agreed-fields
         required: true
         content:
           application/json:
@@ -104,19 +106,20 @@ paths:
                 password:
                   type: string
                   writeOnly: true
-                  minLength: 15
-                  maxLength: 128
-                  description: Unicodeコードポイントで数える。前後の空白を削らず、大文字・小文字を区別。Argon2idの具体パラメーター等は未決定
+                  x-nfc-min-code-points: 15
+                  x-nfc-max-code-points: 128
+                  description: NFCでそろえた後のUnicodeコードポイントで数える。JSON原文のminLength/maxLengthでは表現しない。前後の空白を削らず、大文字・小文字を区別。Argon2idの具体プロファイルは共通ハッシュ仕様を参照
       responses:
         '204':
+          x-design-status: agreed
           description: セッション保存成功。本文なし。Cookie保存後に本人情報を別取得する
           headers:
             Set-Cookie:
-              description: 認証用Cookie。保護属性と400日の保存期限は共通仕様。名前・Pathは未決定
+              description: watchbrief_session。Path=/、パディングなしBase64URL。保護属性と400日の保存期限は共通仕様
               schema:
                 type: string
         '400':
-          description: 入力不正。本文は共通エラー形式案
+          description: 入力不正。本文は共通エラー形式
         '401':
           description: ID・パスワード認証失敗
         '403':
@@ -141,6 +144,14 @@ paths:
 
 ## 未決定・確認観点
 
-Cookie名・PathとローカルHTTP時の扱い、Origin設定とproxy接続、共通ハッシュの具体パラメーター等・Unicode処理の詳細、JSON不明フィールドの扱い、上限値、エラー形式と優先順位、HTTPステータスは実装前に具体化する。Cookie・CSRFの合意済み条件は共通仕様に従う。
+Cookieの具体設定は共通仕様、Argon2id・NFCは共通ハッシュ仕様を参照する。最終的な本文上限・413/415応答、入力不正の詳細文言・評価順、本番proxy・TLSでの挙動は今後具体化・検証する。
 
-正常ログイン、誤パスワード・未知ID、入力不正、CSRF拒否、DB保存失敗時のCookie非発行、ログ・レスポンスへの秘密情報非混入を検証する。現時点では仕様案の整理のみで、実HTTP通信は未確認。
+正常ログイン、誤パスワード・未知ID、入力不正、CSRF拒否、DB保存失敗時のCookie非発行、ログ・レスポンスへの秘密情報非混入を検証する。実装の検証結果と未確認範囲はIssueへ記録する。
+
+## 現在の実装範囲
+
+現在の[Backend](../../backend/README.md)は、Origin検証後にJSON・入力条件を確認し、User取得・共通Argon2id照合・セッションINSERTを行う。保存成功時だけ204とCookieを返す。未知IDでもダミーハッシュを照合し、誤パスワードと同じ401にする。DB等の内部障害は秘密値を含まない500と固定項目の構造化ログにする。
+
+4KiB上限・厳密なJSON項目検証・Content-Type不正時の400等は検証用の仮実装。未知・重複項目、null、末尾の別JSON、不正UTF-8・対にならないUTF-16サロゲートを拒否する。413/415等の提案を採用済みに更新するものではない。操作の10秒timeoutはDB処理等を対象とし、セッション失効ではない。
+
+FrontendからVite経由でログインし、204の後は本人情報APIを呼んでログインIDを表示する。取得失敗時には成功表示を確定せず、未認証・通信・内部障害を区別する。

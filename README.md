@@ -27,7 +27,9 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-架空Userの管理コマンド、Vueログイン画面、Goのログイン・本人情報API、認証DB migrationの既存AI案があります。ログインから本人情報表示までの実動作は未確認で、利用できるアプリケーションはまだありません。[過去のAI担当による検証記録と制限](docs/verification-issue-53.md)を確認してください。
+Vue・TypeScript・Vite・PrimeVueによる表示確認用の最小画面があります。[Frontendの起動手順](frontend/README.md)で確認できます。[Go API](backend/README.md)は準備済みのローカルDBへ接続して起動します。画面からVite経由でAPIへ入力を送信できます。[現在の管理コマンド](backend/README.md#架空userの作成)で架空UserをDBへ追加できます。ログイン認証・セッション保存・Cookie発行は接続済み。Cookieから本人情報を取得し、ログインIDを表示できます。画面を再読み込みしてもCookieで再認証します。
+
+架空Userの管理コマンド、Vueログイン画面、Goのログイン・本人情報API、認証DB migrationの既存AI案があります。旧案は現在の実装と区別します。現在は架空User作成からログイン・本人情報表示までの最小経路を実装しています。[過去のAI担当による検証記録と制限](docs/verification-issue-53.md)を確認してください。
 
 初期構成はEC2 1台にnginx・アプリ・PostgreSQLを同居させ、Ubuntu Server LTSとsystemdを使い、手動でデプロイする方針です。最小骨格にはVue・Go、DBアクセスにはSQL＋sqlcを使います。[既存AI案の具体方式](docs/auth-implementation.md)は参考であり、それだけで採用決定にはしません。配置・運用の合意事項と設計案は[システム設計](docs/system-design.md)にまとめています。
 
@@ -51,12 +53,45 @@ MVPでは、次の使い方を想定しています。
 
 ## ローカルで見る
 
+現在の最小骨格は[Frontend](frontend/README.md)・[Backend](backend/README.md)の手順で起動できます。DB単体の起動は[ローカルPostgreSQL](docs/local-postgresql.md)を参照してください。ログインにはDBの初期設定・migrationと架空User作成が必要です。
+
 [既存AI案のローカル起動・検証手順](docs/local-development.md)は参考として残しており、全手順の実行成功は未確認です。ファイルを確認するだけなら、通常のGit cloneで取得できます。
 
 ```bash
 git clone https://github.com/smofktn/watchbrief.git
 cd watchbrief
 ```
+
+## 開発コマンド
+
+リポジトリルートで `make help` を実行すると一覧を確認できます。Frontend・Backend内でも `make help` が使えます。DB操作はBackendのMakefileが担当し、ルートから同名ターゲットへ委譲します。
+
+```bash
+make frontend-dev
+```
+
+別の端末でAPIを起動します。
+
+```bash
+make backend-dev
+```
+
+架空Userを追加する場合は、DBの初期設定・migration後に実行します。パスワードは端末で2回非表示入力します。
+
+```bash
+make user-create LOGIN_ID=fictional_user
+```
+
+| 操作 | ルート | Frontend内 | Backend内 |
+|---|---|---|---|
+| 起動 | `make frontend-dev` / `make backend-dev` | `make dev` | `make dev` |
+| ビルド | `make build` | `make build` | `make build` |
+| 試験・型検査 | `make check` | `make typecheck` | `make test` |
+| DB起動・状況確認 | `make db-up` / `make db-status` | — | 同名ターゲット |
+| migration | `make db-migrate` | — | `make db-migrate` |
+| User追加 | `make user-create LOGIN_ID=fictional_user` | — | 同名ターゲット |
+
+依存導入は `make frontend-install`、goose/sqlc導入は `make tools-install`、asdfでのGo/Node導入は `make runtime-install` を使います。初回のDB準備と各試験の前提は[ローカルPostgreSQL](docs/local-postgresql.md)・[Backend](backend/README.md)を参照してください。初期設定やmigrationは通常起動へ自動追加しません。
 
 ## 開発について
 

@@ -7,9 +7,9 @@
 | メソッド・パス | `GET /api/me` | 合意済み |
 | 目的 | Cookieで本人を特定し、自分のログインIDを返す | 合意済み |
 | 呼び出すタイミング | ログイン後と、画面の初期表示・再読込時 | 合意済み |
-| 認証 | PostgreSQLのサーバー側セッションとCookie | 合意済み、Cookie名等は未決定 |
+| 認証 | PostgreSQLのサーバー側セッションとCookie | 合意済み。具体Cookieは共通仕様、API実装済み |
 | `operationId` | `getCurrentUser` | 提案 |
-| 正常ステータス・JSON | `200` と `{"login_id":"fictional_user"}` | 提案 |
+| 正常ステータス・JSON | `200` と `{"login_id":"fictional_user"}` | 合意済み |
 
 [共通事項](README.md)、[ログインAPI](post-api-login.md)、[基本設計](../system-design.md#issue-53の基本設計)も参照する。
 
@@ -19,14 +19,14 @@
 
 | 入力 | 場所 | 条件 | 状態 |
 |---|---|---|---|
-| 認証トークン | Cookie | 32byte乱数のトークンをブラウザがCookieとして自動送信する。Cookie名・文字列表現は未決定 | Cookieで本人を特定することは合意済み |
+| 認証トークン | Cookie | 32byte乱数のトークンをブラウザがCookieとして自動送信する。名前はwatchbrief_session、パディングなしBase64URLの43文字 | Cookieで本人を特定することは合意済み |
 | User ID | 受け取らない | 取得対象はCookieで特定し、画面から指定しない | 基本設計に従う |
 
 パス・クエリパラメーターとリクエスト本文は使わない案。認証トークンをURL・クエリ・JSONへ入れず、VueがCookieを読み取って付け直す設計にはしない。
 
 ## レスポンス
 
-### 正常系案：200 OK
+### 正常系：200 OK（合意済み）
 
 ```json
 {
@@ -34,17 +34,17 @@
 }
 ```
 
-| フィールド案 | 型 | 必須案 | 内容 |
+| フィールド | 型 | 必須 | 内容 |
 |---|---|---|---|
 | `login_id` | string | 必須 | Cookieで認証したUserの、DBに保存された小文字のログインID |
 
 Cookieのトークン、パスワードハッシュ、内部セッションID等は返さない。[共通の応答案](README.md#共通の応答案)のJSONヘッダー・キャッシュ抑止を適用する。[共通仕様](README.md#cookieの保存更新合意済み)に従い、認証成功時に同じトークンのCookieの保存期限を更新する。
 
-### エラー応答案
+### エラー応答
 
-本文は[共通エラー形式案](README.md#共通の応答案)。ステータス・コード・Cookieの不正形式や重複の判定詳細は提案として扱う。
+本文は[共通エラー形式](README.md#共通の応答案)。401・500のステータスとコード・分類は合意済み。現在の実装では、Cookie欠落・不正・同名Cookieの重複を401とし、DB照合前に拒否する。DB障害の500と区別する。
 
-| ステータス案 | `error.code` 案 | 状況 | 画面の動きの案 |
+| ステータス | `error.code` | 状況 | 画面の動きの案 |
 |---|---|---|---|
 | `401` | `unauthenticated` | Cookieなし、不正なCookie、対応するセッションがない等 | 本人情報を表示せず、ログインフォームを表示する |
 | `500` | `internal_error` | DB接続・検索等の内部障害 | 認証状態を断定せず、通信・サーバーエラーと再試行手段を表示する |
@@ -53,7 +53,7 @@ Cookieのトークン、パスワードハッシュ、内部セッションID等
 
 ## OpenAPI風の定義（抜粋・提案）
 
-以下は `paths`・`components` に相当するYAMLの抜粋。`SESSION_COOKIE_NAME_TBD` は未決定のCookie名を表す仮の名前であり、実際の採用名ではない。認証トークンをOpenAPIのBearer認証として表現しない。
+以下は `paths`・`components` に相当するYAMLの抜粋。Cookie名はログイン実装と共通のwatchbrief_session。認証トークンをOpenAPIのBearer認証として表現しない。
 
 ```yaml
 paths:
@@ -62,11 +62,12 @@ paths:
       operationId: getCurrentUser
       summary: Cookieで認証した本人のログインIDを取得する
       tags: [Authentication]
-      x-design-status: proposed-details
+      x-design-status: partially-agreed
       security:
         - sessionCookie: []
       responses:
         '200':
+          x-design-status: agreed
           description: 本人情報
           content:
             application/json:
@@ -82,7 +83,7 @@ paths:
               example:
                 login_id: fictional_user
         '401':
-          description: 未認証。本文は共通エラー形式案
+          description: 未認証。本文は共通エラー形式
         '500':
           description: 内部障害。未認証と区別する
 components:
@@ -90,8 +91,8 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: SESSION_COOKIE_NAME_TBD
-      description: ランダムトークンを保持するCookie。保護属性と認証成功時の400日の保存期限更新は共通仕様。名前・Pathは未決定
+      name: watchbrief_session
+      description: ランダムトークンを保持するCookie。保護属性と認証成功時の400日の保存期限更新は共通仕様。名前watchbrief_session、Path=/
 ```
 
 ## 処理順・副作用
@@ -104,6 +105,12 @@ DBに新しいUser・セッションを作らず、パスワードを再要求�
 
 ## 未決定・確認観点
 
-Cookieの保護属性は[共通仕様](README.md#cookieの保護とcsrf合意済み)に従う。Cookie名・Path、ローカルHTTP時の扱い、トークンの文字列表現・厳密な検証方法、エラー形式、Cookie不正時の応答詳細、処理上限等は実装前に具体化する。
+Cookieの保護属性は[共通仕様](README.md#cookieの保護とcsrf合意済み)に従う。Cookie名・Path・ローカルHTTP時の扱い・文字列表現は共通仕様を参照する。実装はCookieヘッダー全行から同名項目を数え、正確に1件を要求する。値は43文字・パディングなしBase64URLのStrictデコード・32byte・再エンコード一致で確認し、引用符・パディング・非正規表現を拒否する。無効な値を標準Cookie解析が読み飛ばした結果、有効な方だけを採用しない。照合は元byte列のSHA-256による一意検索。
 
-ログイン後のCookieによる本人情報取得、Cookieなし・不正・該当セッションなしの拒否、DB障害と未認証の区別、APIの実プロセス再起動後の認証維持、秘密情報非混入を検証する。Cookieの具体的な保存方式を決めた後、ブラウザ再起動時の挙動も確認する。現時点では仕様案の整理のみで、実HTTP通信は未確認。
+ログイン後のCookieによる本人情報取得、Cookieなし・不正・該当セッションなしの拒否、DB障害と未認証の区別、APIの実プロセス再起動後の認証維持、秘密情報非混入を検証する。Cookieの具体的な保存方式を決めた後、ブラウザ再起動時の挙動も確認する。検証結果・未確認範囲はIssueへ記録する。
+
+## 現在の実装範囲
+
+HTTP境界でCookieを検証してハッシュ化し、CurrentUserユースケースを通じてsqlcのJOIN検索でログインIDだけを取得する。パスワードハッシュをこのSELECTに含めない。DBに書き込まず、成功時だけ同じCookieの保存期限を400日後へ更新する。処理timeoutは10秒であり、セッション失効ではない。失敗時はCookieを更新・削除しない。
+
+GETにはログインのOrigin必須チェックを適用しない。新しいUser・セッションを作成せず、本人情報へのアクセスはCookie認証で保護する。CORSによる外部Originへの読み取り許可も追加しない。
