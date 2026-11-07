@@ -26,7 +26,7 @@ type LoginService interface {
 	Execute(context.Context, string, string) ([32]byte, error)
 }
 
-func NewHandler(origin string, service LoginService, current CurrentUserService, logger *slog.Logger) (http.Handler, error) {
+func NewHandler(origin string, service LoginService, current CurrentUserService, logout LogoutService, logger *slog.Logger) (http.Handler, error) {
 	u, err := url.Parse(origin)
 	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("invalid origin configuration")
@@ -37,8 +37,8 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 			return nil, errors.New("HTTP origin must be loopback")
 		}
 	}
-	if service == nil || current == nil {
-		return nil, errors.New("login service required")
+	if service == nil || current == nil || logout == nil {
+		return nil, errors.New("authentication services required")
 	}
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -50,11 +50,8 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 	}
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/me", currentUserHandler(current, logger, u.Scheme == "https"))
-	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header.Values("Origin")) != 1 || r.Header.Get("Origin") != origin || protection.Check(r) != nil {
-			writeError(w, 403, "csrf_rejected", "リクエストの送信元を確認できません。")
-			return
-		}
+	mux.Handle("POST /api/logout", sameOriginHandler(origin, protection, logoutHandler(logout, logger, u.Scheme == "https")))
+	mux.Handle("POST /api/login", sameOriginHandler(origin, protection, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || mediaType != "application/json" {
 			writeError(w, 400, "invalid_request", "JSON形式でログインIDとパスワードを指定してください。")
@@ -93,7 +90,7 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 		w.Header().Set("Cache-Control", "no-store")
 		setSessionCookie(w, base64.RawURLEncoding.EncodeToString(raw[:]), u.Scheme == "https")
 		w.WriteHeader(http.StatusNoContent)
-	})
+	})))
 	return mux, nil
 }
 

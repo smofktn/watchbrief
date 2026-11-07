@@ -27,7 +27,7 @@ make check-input
 - `internal/domain`：ASCIIのID正規化・条件、パスワード15〜128コードポイントの検証。HTTP・DBには依存しない。パスワードのtrimや大小文字変換は行わない。NFC正規化を文字数確認前に適用する。制御文字・弱いパスワードリスト等の追加拒否はまだ未実装。
 - `internal/transport/httpapi`：Origin・Go標準CSRF防御、JSON解析、ドメイン検証、固定のJSONエラー。信頼するOriginはAPP_ORIGINの1つだけとし、それとは別にOriginヘッダー1件・完全一致を必須にする。
 - `internal/usecase`：User取得・共通ハッシュ照合・トークン生成・セッション保存。HTTPとSQLの詳細には依存しない。
-- `internal/adapter/postgres`：sqlcによるUser検索・セッションINSERT。APIの接続プールは最大4接続。
+- `internal/adapter/postgres`：sqlcによるUser検索・セッションINSERT／検索／対象削除。APIの接続プールは最大4接続。
 - `cmd/api`：DB・共有ハッシュ部品・ユースケース・HTTPの組み立てと起動・終了。migrationは自動実行しない。
 
 ```bash
@@ -99,6 +99,20 @@ make verify-user-create
 ```
 
 この試験にはLinuxのPTYとlibargon2が必要。検証用の架空User1件を保持し、再実行時は同じUserを再利用する。資格情報は `.local/user-create-verification.json`（600・Git対象外）だけに保存し値は表示しない。通常のUser作成コマンドが平文パスワードを保存するという意味ではない。失敗ケースではDBにUserが増えず、重複ケースでは既存値が変わらないこと、非表示入力・Ctrl+Cの表示復元と、保存ハッシュの独立実装での照合を確認する。
+
+## ログアウトAPI（Issue #54）
+
+`POST /api/logout` はCookieで指定されたセッションだけを物理削除してからCookieを削除し、204を返す。Origin必須・完全一致とGo標準CSRF防御をログインと共通化している。本文は不要。Cookie欠落・不正・重複は401、DB障害は500でCookieを残す。削除済みトークンによる再試行も204とする。[API仕様](../docs/API仕様/post-api-logout.md)を参照する。
+
+既存DBへは起動前に `make db-migrate` で版2のDELETE権限を適用する。API自身はmigrationを実行しない。画面からの操作と処理中・失敗時の表示は[画面仕様](../docs/画面仕様/ログイン・本人情報表示.md#ログアウトissue-54)を参照する。
+
+```bash
+make verify-logout-api
+```
+
+非公開の架空検証Userを再利用し、検証APIを空きポートで別起動する。対象セッションの削除・旧トークン401・再試行204・同じUserの他セッション／他Userの維持・CSRF拒否を確認する。さらに対象の検証行だけをロックし、実DB処理timeoutの500・Cookie保持と、ロック解除後の再試行を検証する。普段のAPIやDBは停止しない。
+
+追加の架空User1件と検証セッションを作る。試験終了時はこの実行で発行したセッションだけをログアウトAPIで削除し、既存セッションは残す。追加Userと非公開の検証資格情報は保持し、次回も再利用する。秘密値は出力せず、資格情報ファイルと一時ログは.local配下・Git対象外とする。
 
 ## ログインAPIの実DB検証
 

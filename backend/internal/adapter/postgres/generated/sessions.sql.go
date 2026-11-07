@@ -24,6 +24,15 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	return err
 }
 
+const deleteSessionByHash = `-- name: DeleteSessionByHash :exec
+DELETE FROM app.auth_sessions WHERE token_hash = $1
+`
+
+func (q *Queries) DeleteSessionByHash(ctx context.Context, tokenHash []byte) error {
+	_, err := q.db.Exec(ctx, deleteSessionByHash, tokenHash)
+	return err
+}
+
 const userBySessionHash = `-- name: UserBySessionHash :one
 SELECT u.login_id FROM app.auth_sessions s
 JOIN app.users u ON u.id = s.user_id

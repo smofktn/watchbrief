@@ -62,7 +62,7 @@ func run(logger *slog.Logger) error {
 		return errors.New("dummy_hash_initialize")
 	}
 	login := usecase.Login{Store: postgres.NewUserStore(pool), Verifier: hasher, DummyHash: dummyHash, NewID: identifier.NewULID, NewToken: token.New}
-	handler, err := httpapi.NewHandler(os.Getenv("APP_ORIGIN"), login, usecase.CurrentUser{Store: postgres.NewUserStore(pool)}, logger)
+	handler, err := httpapi.NewHandler(os.Getenv("APP_ORIGIN"), login, usecase.CurrentUser{Store: postgres.NewUserStore(pool)}, usecase.Logout{Store: postgres.NewUserStore(pool)}, logger)
 	if err != nil {
 		return errors.New("invalid_origin_configuration")
 	}

@@ -33,7 +33,7 @@ func TestCurrentUserRejectsInvalidCookiesBeforeDB(t *testing.T) {
 	valid := base64.RawURLEncoding.EncodeToString(raw)
 	for _, header := range []string{"", "other=value", SessionCookieName, SessionCookieName + "=", SessionCookieName + "=bad", SessionCookieName + "=" + valid + "=", SessionCookieName + "=\"" + valid + "\"", SessionCookieName + "=" + valid[:42] + "B", SessionCookieName + "=" + valid + "; " + SessionCookieName + "=bad", SessionCookieName + "=" + strings.Repeat("A", 1000)} {
 		service := &currentResult{}
-		h, err := NewHandler("http://127.0.0.1:5173", &loginResult{}, service, nil)
+		h, err := NewHandler("http://127.0.0.1:5173", &loginResult{}, service, &logoutResult{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +47,7 @@ func TestCurrentUserRejectsInvalidCookiesBeforeDB(t *testing.T) {
 	}
 	// Duplicate names split across header lines, including a malformed value.
 	service := &currentResult{}
-	h, _ := NewHandler("http://127.0.0.1:5173", &loginResult{}, service, nil)
+	h, _ := NewHandler("http://127.0.0.1:5173", &loginResult{}, service, &logoutResult{}, nil)
 	r := httptest.NewRequest("GET", "/api/me", nil)
 	r.Header.Add("Cookie", SessionCookieName+"="+valid)
 	r.Header.Add("Cookie", SessionCookieName+"=\"bad value\"")
@@ -65,7 +65,7 @@ func TestCurrentUserResponseAndRenewal(t *testing.T) {
 		for _, failure := range []error{nil, domain.ErrUnauthenticated, errors.New("private-db-token-marker")} {
 			service := &currentResult{err: failure}
 			var logs bytes.Buffer
-			h, err := NewHandler(origin, &loginResult{}, service, slog.New(slog.NewJSONHandler(&logs, nil)))
+			h, err := NewHandler(origin, &loginResult{}, service, &logoutResult{}, slog.New(slog.NewJSONHandler(&logs, nil)))
 			if err != nil {
 				t.Fatal(err)
 			}
