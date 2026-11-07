@@ -1,6 +1,6 @@
 # WatchBrief ドキュメント
 
-> **Issue #53の既存案について**：以前のAIが作成した未完成の実装案と、それに伴う文書変更を参考として保持している。具体バージョン、ハッシュ、Cookie・CSRF、migration等は、今回利用者と確認したもの以外は採用済みと扱わない。過去の検証結果も今回の実動作確認とは区別する。現在の進め方は[作業計画](work-plan.md#利用者主体で子issueを進める運用合意済み)を参照する。
+ローカル実装の入口は[新規構築・一連の確認と障害復旧](verification-issue-17.md)。管理CLI、認証、保護URL、自分の設定・保存Reportの読み取りとログアウトが対象です。採用済み契約は画面・API仕様と各設計の現在の節を参照してください。旧AI案の文書は参考資料として区別します。
 
 このディレクトリには、WatchBriefの仕様、論理設計、初期インフラ・運用設計を置く。
 
@@ -21,9 +21,9 @@
 
 初期構成をざっと確認する場合は、[Issue #11の範囲と全体像](system-design.md#issue-11の範囲と初期構成の全体像)を参照する。[構築・運用の設計案](system-design.md#構築運用の設計案)では、合意済みの構成を前提に、採用前の具体方式と手順をまとめている。アプリ実装・AWS構築は設計Issueの対象外とする。
 
-認証と非公開データの扱いは[Issue #1の設計](system-design.md#issue-1の認証公開境界秘密情報設計)を参照する。Cookie・CSRFは[現在の基本設計](system-design.md#issue-53の基本設計)から実装前に具体化し、ログイン失敗制限・認証専用記録はMVP後、内部宛てのSSRF対策は初期MVPと区別している。後続Issueと実装開始までの順序案は[作業計画](work-plan.md)にまとめる。
+認証と非公開データの扱いは[Issue #1の設計](system-design.md#issue-1の認証公開境界秘密情報設計)を参照する。Cookie・CSRFは[現在の基本設計](system-design.md#issue-53の基本設計)とAPI仕様へ具体化し、ログイン失敗制限・認証専用記録はMVP後、内部宛てのSSRF対策は初期MVPと区別している。後続Issueと実装開始までの順序案は[作業計画](work-plan.md)にまとめる。
 
-Issue #53は[現在の基本設計案](system-design.md#issue-53の基本設計)を起点に読む。FrontendはVue 3・TypeScript・Vite・PrimeVueに合意し、画面・APIの具体案は相談中である。[旧AI案の認証方式](auth-implementation.md)、[起動手順](local-development.md)、[検証記録](verification-issue-53.md)は参考文書として保持する。今回の採用決定・実装・動作確認と区別する。
+Issue #53は[現在の基本設計案](system-design.md#issue-53の基本設計)を起点に読む。FrontendはVue 3・TypeScript・Vite・PrimeVueに合意し、画面・APIの現在の契約はそれぞれの仕様書で保守する。[旧AI案の認証方式](auth-implementation.md)、[起動手順](local-development.md)、[検証記録](verification-issue-53.md)は参考文書として保持する。今回の採用決定・実装・動作確認と区別する。
 
 共通パスワードハッシュの現在の初期プロファイルと部品の検証手順は[共通パスワードハッシュ](password-hashing.md)を参照する。User作成やAPIへの接続とは区別する。
 

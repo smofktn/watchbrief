@@ -14,7 +14,7 @@ make db-status
 
 準備スクリプトは `.local/postgres-admin-password` に初期管理用のランダムパスワードを作る。ファイルはmode 600とし、値を表示せず、既存ファイルを上書きしない。`.local/` はGit管理対象外。パスワードをコマンド引数・履歴・ログ・Issueへ転記しない。
 
-公式イメージ `postgres:18.6-bookworm` を固定して使う。PostgreSQL 18以上の公式イメージに合わせ、`/var/lib/postgresql` へ専用の名前付きvolumeをマウントする。ホスト側の公開先は `127.0.0.1:5432` に限定する。既存のDBが同じポートを使っている場合は、既存サービスを停止せず、設定の調整を相談する。
+公式イメージ `postgres:18.6-bookworm` を固定して使う。PostgreSQL 18以上の公式イメージに合わせ、`/var/lib/postgresql` へ専用の名前付きvolumeをマウントする。ホスト側の公開先は `127.0.0.1:5432` に限定する。既存のDBが同じポートを使っている場合は停止せず、別の空きポートを `DB_PORT` へ指定し、DB起動・migration・API・管理CLIに同じ値を渡す（既定5432、1〜65535の数字）。接続先host・DB名・roleは固定のまま。`make verify-issue17` は自動で専用ポートを選び、通常DBを停止しない。
 
 ## データと認証
 
