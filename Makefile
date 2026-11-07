@@ -1,6 +1,6 @@
 include make/common.mk
 
-FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test-legacy
+FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-test-db backend-benchmark-password backend-check-input
 BACKEND_DIRECT := user-create verify-user-create verify-login-api verify-logout-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
@@ -25,6 +25,7 @@ help:
 	  '  make backend-benchmark-password / backend-check-input' \
 	  '  make backend-fmt                    現在のGoコードを整形' \
 	  '  make frontend-typecheck / frontend-preview / frontend-audit' \
+	  '  make frontend-test                  保護ルート・ログイン戻り先の試験' \
 	  '  make frontend-test-legacy           旧案の通信試験（参考）' \
 	  '  make runtime-install / runtime-versions  asdf版の導入・確認' \
 	  'Frontend・Backend側は make -C frontend help / make -C backend help で確認できます。'
@@ -47,7 +48,7 @@ runtime-versions:
 
 build: frontend-build backend-build
 
-test: backend-test
+test: backend-test frontend-test
 
-check: backend-test frontend-typecheck
+check: backend-test frontend-typecheck frontend-test
 	git diff --check

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
+import { canonicalLoginPath, DEFAULT_PROTECTED_PATH, isProtectedPath, loginDestination, loginPathFor, LOGIN_PATH } from './navigation'
 
 const loginId = ref('')
 const password = ref('')
@@ -10,10 +11,16 @@ const message = ref('')
 const submitting = ref(false)
 const inputError = ref('')
 const currentLoginId = ref('')
-const state = ref<'checking' | 'anonymous' | 'authenticated' | 'error' | 'logging-out' | 'logout-error'>('checking')
+const state = ref<'checking' | 'anonymous' | 'authenticated' | 'error' | 'logging-out' | 'logout-error' | 'not-found'>('checking')
+const routePath = ref(window.location.pathname)
 const logoutStatus = ref<HTMLElement | null>(null)
 const loginTitle = ref<HTMLElement | null>(null)
 let currentUserRequest = 0
+
+const replaceLocation = (path: string) => {
+  window.history.replaceState(null, '', path)
+  routePath.value = window.location.pathname
+}
 
 const loadCurrentUser = async () => {
   const requestId = ++currentUserRequest
@@ -30,12 +37,18 @@ const loadCurrentUser = async () => {
     if (response.status === 401 && typeof body === 'object' && body !== null
       && 'error' in body && typeof body.error === 'object' && body.error !== null
       && 'code' in body.error && body.error.code === 'unauthenticated') {
+      if (isProtectedPath(routePath.value)) {
+        replaceLocation(loginPathFor(routePath.value))
+      }
       state.value = 'anonymous'
       return
     }
     if (response.status === 200 && typeof body === 'object' && body !== null
       && 'login_id' in body && typeof body.login_id === 'string'
       && /^[a-z0-9_-]{1,64}$/.test(body.login_id)) {
+      if (routePath.value === LOGIN_PATH) {
+        replaceLocation(loginDestination(window.location.search))
+      }
       currentLoginId.value = body.login_id
       state.value = 'authenticated'
       return
@@ -50,13 +63,57 @@ const loadCurrentUser = async () => {
   state.value = 'error'
 }
 
-onMounted(loadCurrentUser)
+const handleNavigation = () => {
+  // Browser history must not bypass an unconfirmed logout or restore private data.
+  if (state.value === 'logging-out' || state.value === 'logout-error') {
+    replaceLocation(LOGIN_PATH)
+    return
+  }
+  ++currentUserRequest
+  loginId.value = ''
+  password.value = ''
+  currentLoginId.value = ''
+  inputError.value = ''
+  submitting.value = false
+  routePath.value = window.location.pathname
+  if (routePath.value === '/') {
+    replaceLocation(DEFAULT_PROTECTED_PATH)
+  } else if (routePath.value === LOGIN_PATH) {
+    replaceLocation(canonicalLoginPath(window.location.search))
+  } else if (isProtectedPath(routePath.value)) {
+    // This screen currently has no supported query parameters or fragments.
+    replaceLocation(routePath.value)
+  } else {
+    state.value = 'not-found'
+    return
+  }
+  void loadCurrentUser()
+}
+
+const handlePageShow = (event: PageTransitionEvent) => {
+  if (event.persisted) {
+    handleNavigation()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('popstate', handleNavigation)
+  window.addEventListener('pageshow', handlePageShow)
+  handleNavigation()
+})
+
+onUnmounted(() => {
+  ++currentUserRequest
+  window.removeEventListener('popstate', handleNavigation)
+  window.removeEventListener('pageshow', handlePageShow)
+})
 
 const submit = async () => {
   if (submitting.value || state.value !== 'anonymous') {
     return
   }
   submitting.value = true
+  const requestId = ++currentUserRequest
   message.value = ''
   inputError.value = ''
   try {
@@ -66,12 +123,19 @@ const submit = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login_id: loginId.value, password: password.value }),
     })
+    if (requestId !== currentUserRequest) {
+      return
+    }
     if (response.status === 204) {
       password.value = ''
+      submitting.value = false
       await loadCurrentUser()
       return
     }
     const body: unknown = await response.json().catch(() => null)
+    if (requestId !== currentUserRequest) {
+      return
+    }
     const code = typeof body === 'object' && body !== null && 'error' in body
       && typeof body.error === 'object' && body.error !== null && 'code' in body.error
       ? body.error.code : undefined
@@ -86,9 +150,13 @@ const submit = async () => {
       message.value = '処理に失敗しました。時間をおいて再度お試しください'
     }
   } catch {
-    message.value = '接続できません。再度お試しください'
+    if (requestId === currentUserRequest) {
+      message.value = '接続できません。再度お試しください'
+    }
   } finally {
-    submitting.value = false
+    if (requestId === currentUserRequest) {
+      submitting.value = false
+    }
   }
 }
 
@@ -103,6 +171,7 @@ const logout = async () => {
   inputError.value = ''
   message.value = ''
   state.value = 'logging-out'
+  replaceLocation(LOGIN_PATH)
   await nextTick()
   logoutStatus.value?.focus()
 
@@ -136,7 +205,11 @@ const logout = async () => {
     <Card>
       <template #title><h1>WatchBrief</h1></template>
       <template #content>
-        <p v-if="state === 'checking'" role="status">本人情報を確認しています。</p>
+        <section v-if="state === 'not-found'">
+          <h2>ページが見つかりません。</h2>
+          <a href="/me">本人情報へ</a>
+        </section>
+        <p v-else-if="state === 'checking'" role="status">本人情報を確認しています。</p>
         <section v-else-if="state === 'authenticated'" aria-labelledby="current-user-title">
           <h2 id="current-user-title">本人情報</h2>
           <p>ログインID：<span>{{ currentLoginId }}</span></p>

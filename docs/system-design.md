@@ -419,7 +419,7 @@ flowchart LR
 
 ### 画面構成案
 
-1つのURLで認証状態に応じてフォームと本人情報の表示を切り替える構成に合意した。別画面への遷移を初回の正常系へ含めず、小さく動作確認できることを重視する。[主な失敗時の表示](product-definition.md#issue-53で最初に確認する画面)にも合意した。フォームの配置、具体的なURL・Routerの採否、テーマ、その他の状態表示の詳細は提案・未決定である。後続の画面遷移は #55で扱う。
+Issue #53では1つのURLで認証状態に応じてフォームと本人情報の表示を切り替える構成に合意した。別画面への遷移を初回の正常系へ含めず、小さく動作確認できることを重視した。[主な失敗時の表示](product-definition.md#issue-53で最初に確認する画面)は維持し、Issue #55では[保護URLとログイン後の復帰](#issue-55の保護urlとログイン復帰)を接続する。フォームの装飾・テーマ等の未決定事項を今回一括採用するものではない。
 
 | 状態 | 表示と操作の案 |
 |---|---|
@@ -499,6 +499,20 @@ DBへのホストからの接続はloopbackへ限定し、アプリとDBの資�
 ### 旧AI案との関係
 
 [認証の実装方式](auth-implementation.md)・[ローカル手順](local-development.md)・[過去の検証記録](verification-issue-53.md)は、以前のAIによる未完成の案と当時の確認結果を残す参考文書である。今回のFrontend選定や基本設計の正本にはせず、コードの再利用は合意した設計との整合と検証に基づいて判断する。
+
+## Issue #55の保護URLとログイン復帰
+
+既存の「未認証の保護URL→ログイン→安全な元URLへ復帰」を、委任に基づく実装判断で具体化する。FrontendのHistory APIによって `/login` と本人情報の `/me` を扱い、追加のRouter依存は導入しない。認証・認可は引き続きGo APIが担い、画面のURL検証はAPI認証の代用としない。
+
+1. `/` を `/me` へ正規化し、初回・再読込・履歴移動で `GET /api/me` を呼ぶ。401とunauthenticatedを確認したら `/login?return_to=%2Fme` へ移る。500や通信障害なら元の画面で再試行させる。
+2. ログイン画面でも本人情報を確認する。既に認証済みなら安全な戻り先へ移り、未認証ならフォームを表示する。ログイン成功204後も `GET /api/me` 成功を待って移る。
+3. `return_to` は実装済み保護パスの完全一致で許可する。現段階は `/me` のみ。未知・外部・プロトコル相対・逆スラッシュ・二重エンコード・login/APIパス等を遷移先として使わない。重複指定も無効とする。不要なクエリ・フラグメントは履歴から除き、ログ・永続ストレージへ保存しない。
+4. リダイレクトは `history.replaceState` で現在の履歴を置き換え、ログインへの循環を避ける。`popstate` とBFCacheからの復帰でも再確認し、遅れた別要求の結果を新しい画面へ適用しない。
+5. ログアウト開始時に個人データを消して `/login` へ移す。logging-out/logout-error中の履歴移動は本人情報の再取得を行わず、既存の完了確認・再試行を維持する。
+
+保護ルート許可一覧は `frontend/src/navigation.ts` に集約する。後続のCollection・Report画面を追加するときは、画面・APIの所有者検証・戻り先の単体／ブラウザ試験と同時に一覧を拡張する。未実装の画面へ今から転送する機能は追加しない。API・DBスキーマ・Cookie契約は変更しない。
+
+詳細は[画面仕様](画面仕様/保護URLとログイン復帰.md)を参照する。一次情報として[MDN History.replaceState](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState)の同一Origin制限と履歴置換、および[OWASPのリダイレクト対策](https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html)の許可一覧による検証を確認した。具体的な再実行結果・未確認範囲はIssue/PRへ記録する。
 
 ## Issue #54のログアウトAPI
 
