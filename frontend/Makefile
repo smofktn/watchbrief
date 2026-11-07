@@ -1,6 +1,6 @@
 include ../make/common.mk
 
-.PHONY: help install dev build typecheck preview audit test-legacy
+.PHONY: help install dev build typecheck preview audit test test-legacy
 
 help:
 	@printf '%s\n' \
@@ -11,6 +11,7 @@ help:
 	  '  make typecheck     Vue/TypeScript型検査' \
 	  '  make preview       ビルド成果物のローカル確認（API中継なし）' \
 	  '  make audit         npm依存の監査' \
+	  '  make test          保護ルート・ログイン戻り先の試験' \
 	  '  make test-legacy   旧案の通信試験（参考）'
 
 install:
@@ -30,6 +31,9 @@ preview:
 
 audit:
 	$(NPM) audit
+
+test:
+	$(NPM) test
 
 test-legacy:
 	$(NPM) run test:legacy
