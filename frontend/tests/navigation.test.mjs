@@ -34,3 +34,13 @@ test('query parsing accepts one known path, canonicalizes it and removes unused 
   assert.equal(canonicalLoginPath('?return_to=%2Fme%3Fnext%3Dhttps%3A%2F%2Fexample.com'), '/login')
   assert.equal(canonicalLoginPath(''), '/login')
 })
+
+ test('Report routes and return destinations require canonical ULIDs', () => {
+  for (const path of ['/reports', '/reports/01ARZ3NDEKTSV4RRFFQ69G5FAV']) {
+    assert.equal(isProtectedPath(path), true)
+    assert.equal(loginDestination(`?${new URLSearchParams({ return_to: path })}`), path)
+  }
+  for (const path of ['/reports/invalid', '/reports/81ARZ3NDEKTSV4RRFFQ69G5FAV', '/reports/01arz3ndektsv4rrffq69g5fav', '/reports/', '/reports?x=1', '/reports/01ARZ3NDEKTSV4RRFFQ69G5FAV#x']) {
+    assert.equal(safeReturnPath(path), '/me')
+  }
+})

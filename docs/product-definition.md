@@ -410,3 +410,9 @@ AIが出力するMarkdown断片では、通常の文章、段落、太字、斜�
 ## Issue #56で確認する設定取得
 
 既存の本人のCollection設定を取得する仕様を、委任に基づく実装判断で `/collections` 一覧・`/collections/{ULID}` 詳細へ接続する。自分の設定だけを読み取り専用で表示し、他者と不存在は同じ404として扱う。未認証は安全な元パスへのログイン復帰、内部障害はエラーと再試行とする。設定編集は #18、Reportは #57で扱う。[画面仕様](画面仕様/コレクション設定の取得.md)と[API仕様](API仕様/get-api-collections.md)で表示・契約を管理する。
+
+## 保存済みReportの最初の閲覧範囲（Issue #57）
+
+#17の委任に基づく実装判断として、`/reports` の最小リンク一覧と `/reports/{ULID}` の読み取り専用詳細を用意する。管理コマンドが架空の成功Job・Attempt・Reportと構造化データを一括保存し、ログイン後に本人の保存済み本文だけを読む。Collectionを削除した後も履歴の所有者はJobから判定する。
+
+本文は保存済みMarkdownをそのままテキスト表示する。HTML挿入・Markdown変換、日付別・Collection別の本格一覧は #18で扱う。生成、Scheduler・Worker、AI・外部取得はここでは行わない。具体契約は[API](API仕様/get-api-reports.md)と[画面](画面仕様/保存済みReportの取得.md)を参照する。

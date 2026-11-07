@@ -123,3 +123,7 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 ## Issue #56の読み取り実装
 
 既存Collection配下の概念を読み取り専用で保存・取得する。所有者は認証セッションから特定し、Collection名等の現在設定の正本はCollectionに置く。設定取得で業務状態を変えない。管理seedは停止中の架空Collectionを既存Userへ追加し、実データや既存設定を更新しない。編集・ON条件の操作経路は #18、生成履歴は #57以降で扱う。
+
+## 保存履歴を読む最初の実装（Issue #57）
+
+管理seedがJob・Attemptの成功とReport一式を原子的に保存し、アプリは保存済み本文を読む。所有者は必須のJob.user_idで確定し、Collectionの現在の有無に依存しない。本文は構造化データと同じDBを正本とする。生成・状態遷移を実行するWorkerは #19の対象であり、seedは生成処理の代用仕様ではない。[物理制約](database-design.md#保存reportの物理化issue-57)と[最小閲覧](画面仕様/保存済みReportの取得.md)を参照する。

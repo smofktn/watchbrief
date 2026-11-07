@@ -877,3 +877,11 @@ HTTP境界で既存の厳密なCookie検証を行い、ユースケースがセ�
 一覧・詳細はSELECTのみでCookieの期限更新・DB書込みを行わず、画面は従来の本人情報APIで認証を確認してから設定を読む。設定要求にも世代番号を適用し、遷移・ログアウト後の遅い応答で個人データを戻さない。構造化ログは固定項目のみとし、設定全文・入力値・生DBエラーを出さない。API/画面契約は[設定取得API](API仕様/get-api-collections.md)と[設定画面](画面仕様/コレクション設定の取得.md)。
 
 実装判断の根拠は[OWASPのID参照認可](https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html)の本人のデータ集合へ検索を限定する方針と、[PostgreSQLのJSON構築](https://www.postgresql.org/docs/current/functions-json.html)・[制約](https://www.postgresql.org/docs/current/ddl-constraints.html)。新しい認証方式やRLSへの移行は追加していない。
+
+## 保存済みReportの取得（Issue #57）
+
+委任に基づく実装判断として、HTTP→Reportsユースケース→sqlc/pgxの読取経路を追加する。Cookie検証後、セッションのハッシュからUser IDを取り、Report→Attempt→Jobを結ぶSQLの `j.user_id` 条件で一覧・詳細を制限する。現在のCollectionへのJOINは不要で、削除後も認可を維持する。本文はDBの保存値を返し、組立直しも外部通信も行わない。
+
+管理seedはAPIと分離し、migrationロールによる1トランザクションで専用の架空設定、成功Job/Attempt、本文と構造化子テーブルを保存する。安定IDと全指定値の一致確認により再実行を安全にし、衝突時は全体をrollbackする。APIへ新たに付与する権限はSELECTだけとする。
+
+HTTPのDB処理は10秒、Report画面の取得は15秒で打ち切り、内部原因をレスポンス・ログへ出さず固定ラベルで記録する。ログアウト開始・画面移動時にはReportを含む全個人データを消去し、世代が古い応答は採用しない。詳細は[API](API仕様/get-api-reports.md)、[DB](database-design.md#保存reportの物理化issue-57)、[画面](画面仕様/保存済みReportの取得.md)を参照する。

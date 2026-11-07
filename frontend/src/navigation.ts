@@ -8,8 +8,13 @@ export const collectionIDFromPath = (path: string): string | null => {
   return match?.[1] ?? null
 }
 
+export const reportIDFromPath = (path: string): string | null => {
+  const match = /^\/reports\/([0-7][0-9A-HJKMNP-TV-Z]{25})$/.exec(path)
+  return match?.[1] ?? null
+}
+
 export const isProtectedPath = (path: string): boolean => {
-  return path === DEFAULT_PROTECTED_PATH || path === '/collections' || collectionIDFromPath(path) !== null
+  return path === DEFAULT_PROTECTED_PATH || path === '/collections' || collectionIDFromPath(path) !== null || path === '/reports' || reportIDFromPath(path) !== null
 }
 
 export const safeReturnPath = (candidate: string | null): string => {
