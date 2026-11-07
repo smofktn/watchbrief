@@ -92,3 +92,18 @@ func readLocalPassword(passwordFile string) (string, error) {
 	}
 	return password, nil
 }
+
+// LocalPasswordResetter connects only after validation and hashing complete.
+type LocalPasswordResetter struct{ passwordFile string }
+
+func NewLocalPasswordResetter(path string) *LocalPasswordResetter {
+	return &LocalPasswordResetter{passwordFile: path}
+}
+func (s *LocalPasswordResetter) ResetPassword(ctx context.Context, loginID, hash string) error {
+	conn, err := openLocal(ctx, "watchbrief_password_resetter", s.passwordFile)
+	if err != nil {
+		return domain.ErrUserStore
+	}
+	defer conn.Close(context.Background())
+	return NewUserStore(conn).ResetPassword(ctx, loginID, hash)
+}

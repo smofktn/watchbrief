@@ -4,19 +4,24 @@ APP_ORIGIN ?= http://127.0.0.1:5173
 API_ADDR ?= 127.0.0.1:8080
 API_PASSWORD_FILE ?= ../.local/watchbrief-api-password
 LOGIN_ID ?=
+RESET_DB_PASSWORD_FILE ?= ../.local/watchbrief-password-resetter-password
 DB_PASSWORD_FILE ?= ../.local/watchbrief-user-creator-password
+export RESET_DB_PASSWORD_FILE
 export APP_ORIGIN API_ADDR API_PASSWORD_FILE LOGIN_ID DB_PASSWORD_FILE
 
 CURRENT_PACKAGES := ./...
 
-.PHONY: help deps dev build build-api build-user-create user-create fmt test test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+.PHONY: help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 help:
 	@printf '%s\n' \
 	  'Backend — このディレクトリで実行（DB操作もここで管理）' \
 	  '  make dev                  API起動（APP_ORIGINで画面Originを指定可能）' \
 	  '  make deps                 Go依存をlock情報に従って取得' \
-	  '  make build                APIとUser作成CLIを.local/binへビルド' \
+	  '  make build                APIとUser作成・再設定CLIを.local/binへビルド' \
+	  '  make password-reset LOGIN_ID=fictional_user  全セッションを無効化して再設定' \
+	  '  make db-provision-password-resetter  既存DBへ専用ロール追加（1回だけ）' \
+	  '  make verify-password-reset  専用fixtureで再設定と競合を検証' \
 	  '  make user-create LOGIN_ID=fictional_user  パスワードは端末で非表示入力' \
 	  '  make test / test-db       現在のコードの試験 / 実DBの接続試験' \
 	  '  make fmt                  現在のGoコードを整形' \
@@ -38,7 +43,7 @@ dev:
 deps:
 	$(GO) mod download all
 
-build: build-api build-user-create
+build: build-api build-user-create build-password-reset
 
 build-api:
 	@mkdir -p "$(PROJECT_ROOT)/.local/bin"
@@ -135,3 +140,18 @@ seed-reports:
 
 verify-reports-api: build-api build-user-create
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-reports-api.py
+
+build-password-reset:
+	@mkdir -p "$(PROJECT_ROOT)/.local/bin"
+	$(GO) build -o "$(PROJECT_ROOT)/.local/bin/password-reset" ./cmd/password-reset
+
+password-reset: build-password-reset
+	@test -n "$$LOGIN_ID" || { printf '%s\n' 'LOGIN_IDを指定してください' >&2; exit 2; }
+	@"$(PROJECT_ROOT)/.local/bin/password-reset" --login-id "$$LOGIN_ID" --db-password-file "$$RESET_DB_PASSWORD_FILE"
+
+db-provision-password-resetter:
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/provision-password-resetter.py
+
+verify-password-reset: build-api build-user-create build-password-reset
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-password-reset.py
+	$(GO) test -race -tags integration ./internal/adapter/postgres -run 'TestPasswordReset'

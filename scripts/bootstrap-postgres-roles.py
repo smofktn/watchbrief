@@ -28,6 +28,7 @@ def main():
         ("watchbrief_api", "watchbrief-api-password"),
         ("watchbrief_user_creator", "watchbrief-user-creator-password"),
         ("watchbrief_migrator", "watchbrief-migrator-password"),
+        ("watchbrief_password_resetter", "watchbrief-password-resetter-password"),
     ]:
         password = (root / ".local" / filename).read_text().rstrip("\n")
         if not password or "\n" in password or "\r" in password:

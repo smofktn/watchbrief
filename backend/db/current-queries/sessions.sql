@@ -8,3 +8,6 @@ WHERE s.token_hash = $1;
 
 -- name: DeleteSessionByHash :exec
 DELETE FROM app.auth_sessions WHERE token_hash = $1;
+
+-- name: DeleteUserSessions :exec
+DELETE FROM app.auth_sessions WHERE user_id = $1;

@@ -14,7 +14,7 @@ var (
 
 type LoginStore interface {
 	ByLoginID(context.Context, string) (domain.User, error)
-	CreateSession(context.Context, domain.Session) error
+	CreateSession(context.Context, domain.Session, string) error
 }
 
 type PasswordVerifier interface {
@@ -65,7 +65,10 @@ func (uc Login) Execute(ctx context.Context, loginID, password string) ([32]byte
 	if err != nil {
 		return empty, ErrLogin
 	}
-	if err := uc.Store.CreateSession(ctx, domain.Session{ID: sessionID, UserID: user.ID, TokenHash: digest}); err != nil {
+	if err := uc.Store.CreateSession(ctx, domain.Session{ID: sessionID, UserID: user.ID, TokenHash: digest}, user.PasswordHash); err != nil {
+		if errors.Is(err, domain.ErrPasswordChanged) {
+			return empty, ErrInvalidCredentials
+		}
 		return empty, ErrLogin
 	}
 	if ctx.Err() != nil {

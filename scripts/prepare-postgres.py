@@ -31,7 +31,7 @@ def main():
     directory.mkdir(mode=0o700, exist_ok=True)
     names = ["postgres-admin-password"]
     if args.roles:
-        names += ["watchbrief-api-password", "watchbrief-user-creator-password", "watchbrief-migrator-password"]
+        names += ["watchbrief-api-password", "watchbrief-user-creator-password", "watchbrief-migrator-password", "watchbrief-password-resetter-password"]
     for name in names:
         prepare(directory / name)
 

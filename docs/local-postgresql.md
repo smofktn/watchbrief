@@ -43,9 +43,10 @@ make db-bootstrap
 |---|---|---|
 | `watchbrief_api` | `watchbrief-api-password` | DB接続・app schemaのUSAGE。テーブル権限は下記参照。DDL・TEMP・他ロールへの切替は不可 |
 | `watchbrief_user_creator` | `watchbrief-user-creator-password` | DB接続・app schemaのUSAGE。テーブル権限は下記参照。DDL・TEMP・他ロールへの切替は不可 |
+| `watchbrief_password_resetter` | `watchbrief-password-resetter-password` | 対象ID検索・hash更新・全session削除だけ。詳細は[再設定](password-reset.md#最小db権限と索引) |
 | `watchbrief_migrator` | `watchbrief-migrator-password` | DB接続・app schema所有者としてその中のDDL |
 
-3ロールともsuperuser・DB作成・他DBロール管理・replication・RLSバイパスを許可せず、相互のmembershipも与えない。DB自体の所有者はpostgresのままとし、PUBLICのwatchbriefへの接続・TEMP、public schemaへの権限は外す。schema所有者用の別NOLOGINロールは今回追加せず、migration用が直接app schemaを所有する。これらの権限制御は専用DB `watchbrief` の範囲である。
+4ロールともsuperuser・DB作成・他DBロール管理・replication・RLSバイパスを許可せず、相互のmembershipも与えない。DB自体の所有者はpostgresのままとし、PUBLICのwatchbriefへの接続・TEMP、public schemaへの権限は外す。schema所有者用の別NOLOGINロールは今回追加せず、migration用が直接app schemaを所有する。これらの権限制御は専用DB `watchbrief` の範囲である。
 
 接続時の `search_path` は `app, pg_catalog`。API・User作成用はappにオブジェクトを作れず、migration用だけがschemaを管理する。テーブルとテーブル単位の権限は、次のgoose migrationで管理する。
 
@@ -65,7 +66,7 @@ make db-migration-status
 
 CLIはgoose v3.29.0。インストーラーはLinux amd64の公式バイナリを公式リリースのSHA-256と照合し、Git対象外の `.local/bin/goose` へ置く。既存バイナリが異なれば上書きしない。Go・Nodeは引き続きasdfで管理する。
 
-現在のmigrationは `backend/db/goose/000001_create_auth.sql` と `000002_logout_session.sql`。旧案の `backend/db/migrations/` は読み込まない。Up/Downを同じSQLに置き、gooseの通常のトランザクションで適用する。独自のDB版管理は作らず、適用状態は `app.goose_db_version` へ保存する。
+現在のmigrationは `backend/db/goose/` の番号付きSQL（認証・設定・Report・再設定権限と索引）。旧案の `backend/db/migrations/` は読み込まない。Up/Downを同じSQLに置き、gooseの通常のトランザクションで適用する。独自のDB版管理は作らず、適用状態は `app.goose_db_version` へ保存する。
 
 接続パスワードは既存のmigration用秘密ファイルから読み、600の一時passfileでCLIへ渡す。パスワードを引数へ入れず、ローカル固定の接続先だけを使う。継承したPG/GOOSE設定と自動.env読込を無効化する。完了・失敗時は一時ファイルを除去し、DB接続エラーの詳細は出力しない。このラッパー経由の同時実行はローカルfile lockで拒否する。別ホストやCLI直接実行の並行制御を保証するものではない。
 
@@ -75,7 +76,7 @@ CLIはgoose v3.29.0。インストーラーはLinux amd64の公式バイナリ�
 | `app.auth_sessions` | SELECT・INSERT・DELETE | 権限なし |
 | `app.goose_db_version` | 権限なし | 権限なし |
 
-Userの更新・削除とセッションの更新は付与しない。ログアウトに必要なセッションDELETEだけを版2で追加する。テーブル所有者はmigration用であり、API/User作成用は所有者へ切り替えられない。
+上表のAPI・User作成用にはUserの更新・削除とセッションの更新を付与しない。再設定専用ロールの権限は後述する。ログアウトに必要なセッションDELETEだけを版2で追加する。テーブル所有者はmigration用であり、API/User作成用は所有者へ切り替えられない。
 
 ```bash
 make db-verify
@@ -99,3 +100,16 @@ make db-up
 停止してもデータはvolumeに残る。起動・復旧手順にvolume削除は含めない。メジャー版の変更ではデータ移行が必要なので、イメージの数字だけを変更しない。
 
 公式情報：[PostgreSQLの版管理](https://www.postgresql.org/support/versioning/)、[Postgres公式イメージ](https://hub.docker.com/_/postgres)。実行した認証・永続化の検証結果と未確認の範囲はIssue #53へ記録する。
+
+## 再設定用の専用ロール追加（Issue #58）
+
+新規環境の `make db-bootstrap` は `watchbrief_password_resetter` も作る。以前の3ロールで構築済みの環境では、postgresの初期管理操作として次を**1回だけ**実行する。API・既存User・業務データは変更せず、新しい再設定専用ロールと接続設定だけを追加する。
+
+```bash
+make db-provision-password-resetter
+make db-migrate
+```
+
+追加操作は `.local/watchbrief-password-resetter-password` を600で新規生成し、既存ファイルは維持する。既存ロールがあればtransaction全体を失敗させ、パスワードを上書きしない。新規bootstrap済み・追加済みの環境では再実行せずmigrationだけを実行する。失敗時にrole・ファイル・volumeを削除せず、現在の状態を確認する。
+
+provisioningはCREATE ROLE・CONNECT・app USAGE・search_pathと秘密パスワード設定を同transactionで行う。既存のAPI・作成者・migrationの秘密ファイルは変更しない。goose用ロールへCREATEROLEを追加しない。版7が専用ロールへのカラム/テーブル権限、版8がsession user_id索引を追加する。通常の起動へどちらも混ぜない。権限と競合の設計は[再設定](password-reset.md)を参照する。

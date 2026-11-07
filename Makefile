@@ -2,7 +2,7 @@ include make/common.mk
 
 FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-test-db backend-benchmark-password backend-check-input
-BACKEND_DIRECT := user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+BACKEND_DIRECT := password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 .PHONY: help runtime-install runtime-versions build test check $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
 
@@ -13,6 +13,8 @@ help:
 	  '  make frontend-install              Frontend依存を導入' \
 	  '  make backend-deps                  Go依存を取得' \
 	  '  make build / test / check           両方のビルド / Backend試験 / 試験と型検査' \
+	  '  make password-reset LOGIN_ID=fictional_user  非表示入力で再設定・全セッション失効' \
+	  '  make db-provision-password-resetter / verify-password-reset' \
 	  '  make user-create LOGIN_ID=fictional_user  非表示入力でUser追加' \
 	  '  make db-prepare / db-up / db-status / db-stop  DB準備・起動・確認・停止' \
 	  '  make db-bootstrap                  ロール初期設定（初回のみ）' \
