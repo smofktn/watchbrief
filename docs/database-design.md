@@ -366,3 +366,19 @@ PUBLICからdatabaseのCONNECT/CREATE/TEMPとpublic schema権限を剥がし、�
 索引はcollections(user_id,display_order,id)、watch_targets(collection_id,display_order,id)、information_sources(watch_target_id,id)。Scheduleの一意索引と主キーは重複作成しない。URLの一意制約は追加しない。通常APIに4テーブルのSELECTだけを付与し、User作成ロールの権限を増やさない。旧migrationは編集せず、API起動前の明示migrationを維持する。
 
 設定をONにするには有効対象とScheduleが必要という業務ルールは維持する。今回編集APIはなく、管理seedは常に停止中Collectionと有効対象・Scheduleを原子的に作る。#18で編集経路を追加する際には、同じトランザクションでのON条件・停止・削除条件を実装・検証する。#57の履歴への外部キーは今回先取りしない。版3のDownは現在設定の全削除になるため、通常操作・検証では実行しない。
+
+## 保存Reportの物理化（Issue #57）
+
+委任に基づく実装判断として `000004_saved_reports.sql`・`000005_immutable_history_links.sql`・`000006_active_job_collection.sql` でJob・Attempt・Reportと対象結果・事実・出典・事実出典の対応・取得失敗を物理化する。既存migrationは変更しない。識別子は既存と同じULID形式の `text COLLATE "C"`、時刻は `timestamptz`、入力snapshotはobject型のJSONBとする。履歴上のtarget_id/source_idはULID検証のみを行い、現在設定への外部キーを持たない。
+
+Job.user_idはNOT NULL/RESTRICT、Collection参照はSET NULL（NULLは完了履歴のみ許可）、履歴内のFKはRESTRICTとする。本文・対象名等の必須値、状態、失敗分類、started≤heartbeat≤finished、登録元source_idの有無をCHECKで制限する。Attemptは初期MVPの1Job最大1件をUNIQUEとattempt_number=1で制約し、将来retry時はmigrationで変更する。事実区分は `current_state` / `update` とする。対象結果statusの業務上の意味は既存の3状態（`重要な変化あり`・`重要な変化なし`・`調査できませんでした`）とする。今回のfixture用の実装判断として日本語値 `重要な変化あり` を保存する。DBは非空文字列を制約し、一般的な保存enumと生成時の検証方式はWorker実装時に具体化する。
+
+成功AttemptとReportの1対1、JobとAttemptの状態一致、queued時のAttempt不在、queued_at≤started_at、updates_started_at≤started_atはトランザクション末尾の遅延制約triggerで確認する。これにより成功状態とReportを同じトランザクション内で順序を問わず保存でき、片側だけをcommitできない。Job/Attempt/ReportのID、Attempt→Job・Report→Attemptの親参照、試行番号、Jobの所有者・名前・入力snapshot・予定時刻・登録時刻の変更、Collection参照の付け替えと、実行前/実行中Collection参照の解除はtriggerで拒否する。事実と出典の対象一致は既存方針どおり書込側が検証する。現在の書込経路は固定した対応関係を持つ管理seedのみである。
+
+一覧は所有User・予定時刻・ID、処理対象は状態・予定時刻・ID、Collection削除判定はCollection・状態の索引を使う。配下の対象・事実・出典・失敗の取得索引、出典から対応表への逆引き索引も作る。APIは新しい8テーブルをSELECTできるが、INSERT/UPDATE/DELETE/DDL権限は持たない。
+
+テーブル横断条件をCHECKに埋め込まず、[PostgreSQL公式の制約](https://www.postgresql.org/docs/18/ddl-constraints.html)と[遅延制約trigger](https://www.postgresql.org/docs/18/sql-createtrigger.html)の性質に従う。生成処理・監視・自動retryをこのmigrationで実装したとは扱わない。
+
+管理seedの現行fixtureはv3で、対象状態、出典付きcurrent_stateとupdate、本文、入力snapshotを整合させる。snapshotはschema_version、調査方針、初回確認方針、有効対象・情報源の履歴値を含む。検証途中の旧v1/v2履歴は入力不変の方針に従って非上書きで保持するが、現行seedの参照例にはしない。新規環境ではv3だけを追加する。
+
+取得失敗の本文表示は正本のルールに従って情報源の名称・URLだけとし、reasonは構造化行に保持して本文へ含めない。

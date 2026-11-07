@@ -143,3 +143,17 @@ make verify-collections-api
 ```
 
 Collectionのverifyは空一覧用の架空User1件を初回だけCLIで作る。2人へ専用seedを追加し、再実行不変・一覧/詳細・配下設定・空配列・401/400・他者/不存在の同一404・SELECT-only/作成者権限隔離・FK/LOOKBACK/一意性/ULIDを実DBで確認する。削除cascade試験はトランザクションをrollbackする。発行した試験セッションだけを最後にログアウトし、架空Userとseedを保持する。
+
+## 架空の保存済みReport
+
+既存Userを用意した上で、ルートから `make db-migrate`、`make seed-reports LOGIN_ID=fictional_user` を実行する。seedは専用の停止中Collection、成功Job/Attempt、Report本文と対象結果・事実・出典・対応・取得失敗を1トランザクションで保存する。AI・外部取得は行わない。既存Collection fixtureとは別の安定IDを使い、再実行は既存値を変更せず、衝突は全体をrollbackする。本文に含むHTML風の文字列も架空の表示検証用である。
+
+`GET /api/reports` と `/api/reports/{ULID}` はCookie認証で本人の保存値だけを返す。ログイン後 `/reports` から詳細を開く。API権限はSELECTだけで、seedをAPI起動へ混ぜない。
+
+`make verify-reports-api` は#53/#54の架空User fixtureがある環境で、空きポートAPIを起動し、再実行/衝突rollback、所有者認可、DB制約/権限、Collection削除後の履歴保持、ログ非混入を確認する。#53/#54 fixture未作成なら先に `make verify-user-create verify-logout-api` を実行する。検証専用の空Userと衝突確認Collection、削除後保持を確認する成功履歴一式は保持する。既存デモCollectionは削除しない。このコマンドは新しい検証履歴を毎回追加するため、大量の繰返し実行は避ける。
+
+Report APIの実DB障害注入と#17全体の障害横断確認は #59、パスワード再設定は #58へ引き継ぐ。生成・Workerは #19、本格閲覧は #18で扱う。
+
+保存Report seedはfixture namespace v3を使う。対象の業務状態は「重要な変化あり」、現在状態と更新事実の双方に同じ対象の出典を付け、本文・構造化事実・生成入力snapshotを一致させる。旧v1/v2の検証途中履歴が残る環境では、それらは以前の確認用記録であり、現行seedの参照例ではない。既存履歴は変更・削除せず、新規環境にはv3だけを追加する。`make verify-reports-api` はv3を明示して内容一致と全fixture行の再実行不変も確認する。
+
+取得失敗の本文表示は正本のルールに従って情報源の名称・URLだけとし、reasonは構造化行に保持して本文へ含めない。

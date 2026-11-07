@@ -33,3 +33,5 @@ Issue #55で、[プロダクト仕様](../product-definition.md#保護urlとロ�
 - 遅れた本人情報・ログイン応答を別画面へ適用しない。秘密値をURL・ログ・永続ストレージへ入れない。
 
 画面遷移のためにGo APIの認証・Cookie・CSRF契約を変更しない。Report詳細への適用は #57で確認する。本番nginxのSPA fallback・TLSは #21で実環境を検証する。
+
+Issue #57で `/reports` と `/reports/{正規ULID}` を保護パスへ追加する。詳細URLからログイン後に同じReportへ復帰する。[保存済みReportの取得](保存済みReportの取得.md)を参照する。

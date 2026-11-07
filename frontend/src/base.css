@@ -33,3 +33,5 @@ form {
   min-width: 0;
   box-sizing: border-box;
 }
+
+.report-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

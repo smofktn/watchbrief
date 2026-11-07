@@ -35,6 +35,34 @@ type AppCollectionSchedule struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type AppFactSource struct {
+	ID             string
+	ReportFactID   string
+	ReportSourceID string
+}
+
+type AppGenerationAttempt struct {
+	ID              string
+	GenerationJobID string
+	AttemptNumber   int32
+	StartedAt       pgtype.Timestamptz
+	HeartbeatAt     pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
+	Status          string
+	FailureType     pgtype.Text
+}
+
+type AppGenerationJob struct {
+	ID             string
+	UserID         string
+	CollectionID   pgtype.Text
+	CollectionName string
+	InputSnapshot  []byte
+	ScheduledAt    pgtype.Timestamptz
+	QueuedAt       pgtype.Timestamptz
+	Status         string
+}
+
 type AppInformationSource struct {
 	ID            string
 	WatchTargetID string
@@ -43,6 +71,51 @@ type AppInformationSource struct {
 	Instruction   string
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
+}
+
+type AppReport struct {
+	ID                  string
+	GenerationAttemptID string
+	BodyMarkdown        string
+	SummaryMarkdown     string
+	UpdatesStartedAt    pgtype.Timestamptz
+}
+
+type AppReportFact struct {
+	ID                   string
+	ReportTargetResultID string
+	FactKind             string
+	ContentMarkdown      string
+	DisplayOrder         int32
+}
+
+type AppReportSource struct {
+	ID                   string
+	ReportTargetResultID string
+	SourceID             pgtype.Text
+	SourceKind           string
+	SourceName           string
+	SourceUrl            string
+}
+
+type AppReportSourceFailure struct {
+	ID                   string
+	ReportTargetResultID string
+	SourceID             pgtype.Text
+	SourceKind           string
+	SourceName           string
+	SourceUrl            string
+	Reason               string
+}
+
+type AppReportTargetResult struct {
+	ID                string
+	ReportID          string
+	TargetID          string
+	TargetName        string
+	DisplayOrder      int32
+	Status            string
+	AiSummaryMarkdown string
 }
 
 type AppUser struct {

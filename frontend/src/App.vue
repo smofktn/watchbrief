@@ -4,7 +4,8 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
 import { isCollection, isCollectionSummary, type Collection, type CollectionSummary } from './collection-data'
-import { collectionIDFromPath, canonicalLoginPath, DEFAULT_PROTECTED_PATH, isProtectedPath, loginDestination, loginPathFor, LOGIN_PATH } from './navigation'
+import { isReport, isReportSummary, type Report, type ReportSummary } from './report-data'
+import { reportIDFromPath, collectionIDFromPath, canonicalLoginPath, DEFAULT_PROTECTED_PATH, isProtectedPath, loginDestination, loginPathFor, LOGIN_PATH } from './navigation'
 
 const loginId = ref('')
 const password = ref('')
@@ -17,11 +18,15 @@ const routePath = ref(window.location.pathname)
 const logoutStatus = ref<HTMLElement | null>(null)
 const loginTitle = ref<HTMLElement | null>(null)
 let currentUserRequest = 0
+const reports = ref<ReportSummary[]>([])
+const selectedReport = ref<Report | null>(null)
 const collections = ref<CollectionSummary[]>([])
 const selectedCollection = ref<Collection | null>(null)
 const settingsState = ref<'idle' | 'loading' | 'ready' | 'error' | 'not-found'>('idle')
 const settingsMessage = ref('')
 const clearSettings = () => {
+  reports.value = []
+  selectedReport.value = null
   collections.value = []
   selectedCollection.value = null
   settingsMessage.value = ''
@@ -38,12 +43,12 @@ const navigateTo = (path: string) => {
 const loadSettings = async (requestId = currentUserRequest) => {
   clearSettings()
   const path = routePath.value
-  if (path !== '/collections' && collectionIDFromPath(path) === null) {
+  if (path !== '/collections' && collectionIDFromPath(path) === null && path !== '/reports' && reportIDFromPath(path) === null) {
     return
   }
   settingsState.value = 'loading'
   try {
-    const response = await fetch(`/api${path}`, { credentials: 'same-origin', cache: 'no-store' })
+    const response = await fetch(`/api${path}`, { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(15_000) })
     const body: unknown = await response.json().catch(() => null)
     if (requestId !== currentUserRequest) {
       return
@@ -64,6 +69,16 @@ const loadSettings = async (requestId = currentUserRequest) => {
       return
     }
     if (response.status === 200 && typeof body === 'object' && body !== null) {
+      if (path === '/reports' && 'reports' in body && Array.isArray(body.reports) && body.reports.every(isReportSummary)) {
+        reports.value = body.reports
+        settingsState.value = 'ready'
+        return
+      }
+      if (isReport(body) && body.id === reportIDFromPath(path)) {
+        selectedReport.value = body
+        settingsState.value = 'ready'
+        return
+      }
       if (path === '/collections' && 'collections' in body && Array.isArray(body.collections) && body.collections.every(isCollectionSummary)) {
         collections.value = body.collections
         settingsState.value = 'ready'
@@ -288,7 +303,28 @@ const logout = async () => {
           <nav aria-label="確認する情報">
             <a href="/me" @click.prevent="navigateTo('/me')">本人情報</a>
             <span> / </span><a href="/collections" @click.prevent="navigateTo('/collections')">コレクション設定</a>
+            <span> / </span><a href="/reports" @click.prevent="navigateTo('/reports')">保存済みReport</a>
           </nav>
+          <section v-if="routePath === '/reports' || reportIDFromPath(routePath) !== null" aria-labelledby="reports-title">
+            <h2 id="reports-title">保存済みReport（読み取り専用）</h2>
+            <p v-if="settingsState === 'loading'" role="status">Reportを読み込んでいます。</p>
+            <template v-else-if="settingsState === 'error'">
+              <p role="alert">{{ settingsMessage }}</p><Button label="Reportを再試行" @click="loadSettings()" />
+            </template>
+            <p v-else-if="settingsState === 'not-found'" role="alert">見つかりません。</p>
+            <template v-else-if="settingsState === 'ready' && routePath === '/reports'">
+              <p v-if="reports.length === 0">保存済みReportはありません。</p>
+              <ul v-else><li v-for="report in reports" :key="report.id">
+                <a :href="`/reports/${report.id}`" @click.prevent="navigateTo(`/reports/${report.id}`)">{{ report.collection_name }}（予定：{{ report.scheduled_at }}）</a>
+              </li></ul>
+            </template>
+            <article v-else-if="settingsState === 'ready' && selectedReport">
+              <h3>{{ selectedReport.collection_name }}</h3>
+              <p>確認期間：{{ selectedReport.updates_started_at }} 〜 {{ selectedReport.updates_ended_at }}</p>
+              <p>生成完了：{{ selectedReport.generated_at }}</p>
+              <pre class="report-body">{{ selectedReport.body_markdown }}</pre>
+            </article>
+          </section>
           <section v-if="routePath === '/collections' || collectionIDFromPath(routePath) !== null" aria-labelledby="settings-title">
             <h2 id="settings-title">コレクション設定（読み取り専用）</h2>
             <p v-if="settingsState === 'loading'" role="status">設定を読み込んでいます。</p>
