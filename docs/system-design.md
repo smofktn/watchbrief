@@ -869,3 +869,11 @@ AIサービスの未検証の生レスポンスはReportの正本として保存
 - 将来のコンテナ化とECSなどへの移行時期・条件、実行方式、データ移行手順
 
 これらは論理設計を変更し得る場合、候補と影響を説明して合意した後に文書を更新する。
+
+## Issue #56のCollection設定取得
+
+HTTP境界で既存の厳密なCookie検証を行い、ユースケースがセッションハッシュから内部のUser IDを取得する。保存アダプターはそのUser IDを所有者条件として一覧と詳細を検索する。ブラウザからUser IDを受け取らず、詳細は所有者で絞ったCollectionの配下だけを単一SQLで組み立てる。User ID・パスワードハッシュは公開JSONへ含めない。認証を通過した処理中の要求を後からログアウトで取り消す仕組みは追加しない。
+
+一覧・詳細はSELECTのみでCookieの期限更新・DB書込みを行わず、画面は従来の本人情報APIで認証を確認してから設定を読む。設定要求にも世代番号を適用し、遷移・ログアウト後の遅い応答で個人データを戻さない。構造化ログは固定項目のみとし、設定全文・入力値・生DBエラーを出さない。API/画面契約は[設定取得API](API仕様/get-api-collections.md)と[設定画面](画面仕様/コレクション設定の取得.md)。
+
+実装判断の根拠は[OWASPのID参照認可](https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html)の本人のデータ集合へ検索を限定する方針と、[PostgreSQLのJSON構築](https://www.postgresql.org/docs/current/functions-json.html)・[制約](https://www.postgresql.org/docs/current/ddl-constraints.html)。新しい認証方式やRLSへの移行は追加していない。

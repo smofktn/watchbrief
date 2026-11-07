@@ -14,10 +14,52 @@ type AppAuthSession struct {
 	TokenHash []byte
 }
 
+type AppCollection struct {
+	ID                  string
+	UserID              string
+	Name                string
+	ResearchInstruction string
+	Enabled             bool
+	InitialLookbackMode string
+	InitialLookbackDays pgtype.Int4
+	DisplayOrder        int32
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type AppCollectionSchedule struct {
+	ID             string
+	CollectionID   string
+	CronExpression string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type AppInformationSource struct {
+	ID            string
+	WatchTargetID string
+	Name          string
+	Url           string
+	Instruction   string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type AppUser struct {
 	ID           string
 	LoginID      string
 	PasswordHash string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type AppWatchTarget struct {
+	ID           string
+	CollectionID string
+	Name         string
+	Instruction  string
+	Enabled      bool
+	DisplayOrder int32
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }

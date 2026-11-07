@@ -121,3 +121,25 @@ make verify-login-api
 ```
 
 `make verify-user-create` の非公開検証用Userを再利用し、別ポートに検証APIを起動する。未知ID・誤パスワード・CSRF拒否、NFC照合、Cookie属性、トークンとDBハッシュの対応、再起動後のDBセッション保持を確認する。1回に検証セッション2件を残す。値は表示せず、既存Userやセッションを削除しない。本人情報APIでの認証・同じCookieの期限更新・API再起動後の再認証も確認し、本人情報取得でDBのセッション行が変わらないことを検証する。
+
+## Collection設定の取得（Issue #56）
+
+`make db-migrate` で版3を適用した後、既存の架空Userへ設定を追加する。User作成は従来の非表示入力CLIで先に行う。
+
+```bash
+make seed-collections LOGIN_ID=fictional_user
+```
+
+seedはローカルDocker DBへの明示的な管理操作で、既存のmigration所有者を使用する。API実行用・User作成用の資格情報へ管理権限を与えない。対象Userから安定したfixture IDを作り、停止中Collection・Schedule・対象・情報源を1トランザクションで追加する。再実行で既存行や更新日時を変更せず、同じfixture IDに異なる内容があれば全体を中止する。既存設定の上書き・削除、Userの自動作成、外部情報取得は行わない。
+
+`GET /api/collections` と `GET /api/collections/{ULID}` はCookie由来のUser IDで所有者を絞る。通常APIは設定テーブルをSELECTできるだけで、設定変更・DDLはできない。認証・取得が失敗したときは固定エラーと構造化ログを使い、生DBエラーや設定本文を出さない。[API仕様](../docs/API仕様/get-api-collections.md)参照。
+
+verifyは2人の既存の架空検証Userを再利用する。新しい環境では、DB準備・migration後に以下の順で検証Userを用意する。通常の画面確認用Userとは別の検証用資格情報を `.local/` に保持するため、値を表示・公開しない。
+
+```bash
+make verify-user-create
+make verify-logout-api
+make verify-collections-api
+```
+
+Collectionのverifyは空一覧用の架空User1件を初回だけCLIで作る。2人へ専用seedを追加し、再実行不変・一覧/詳細・配下設定・空配列・401/400・他者/不存在の同一404・SELECT-only/作成者権限隔離・FK/LOOKBACK/一意性/ULIDを実DBで確認する。削除cascade試験はトランザクションをrollbackする。発行した試験セッションだけを最後にログアウトし、架空Userとseedを保持する。

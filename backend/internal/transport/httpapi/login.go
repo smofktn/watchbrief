@@ -26,7 +26,7 @@ type LoginService interface {
 	Execute(context.Context, string, string) ([32]byte, error)
 }
 
-func NewHandler(origin string, service LoginService, current CurrentUserService, logout LogoutService, logger *slog.Logger) (http.Handler, error) {
+func NewHandler(origin string, service LoginService, current CurrentUserService, logout LogoutService, logger *slog.Logger, collections ...CollectionService) (http.Handler, error) {
 	u, err := url.Parse(origin)
 	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("invalid origin configuration")
@@ -49,6 +49,10 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 		return nil, errors.New("invalid origin configuration")
 	}
 	mux := http.NewServeMux()
+	if len(collections) > 0 && collections[0] != nil {
+		mux.Handle("GET /api/collections", collectionHandler(collections[0], logger, false))
+		mux.Handle("GET /api/collections/{id}", collectionHandler(collections[0], logger, true))
+	}
 	mux.Handle("GET /api/me", currentUserHandler(current, logger, u.Scheme == "https"))
 	mux.Handle("POST /api/logout", sameOriginHandler(origin, protection, logoutHandler(logout, logger, u.Scheme == "https")))
 	mux.Handle("POST /api/login", sameOriginHandler(origin, protection, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

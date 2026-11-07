@@ -3,7 +3,14 @@
 export const DEFAULT_PROTECTED_PATH = '/me'
 export const LOGIN_PATH = '/login'
 
-export const isProtectedPath = (path: string): boolean => path === DEFAULT_PROTECTED_PATH
+export const collectionIDFromPath = (path: string): string | null => {
+  const match = /^\/collections\/([0-7][0-9A-HJKMNP-TV-Z]{25})$/.exec(path)
+  return match?.[1] ?? null
+}
+
+export const isProtectedPath = (path: string): boolean => {
+  return path === DEFAULT_PROTECTED_PATH || path === '/collections' || collectionIDFromPath(path) !== null
+}
 
 export const safeReturnPath = (candidate: string | null): string => {
   return candidate !== null && isProtectedPath(candidate) ? candidate : DEFAULT_PROTECTED_PATH
