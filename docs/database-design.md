@@ -358,3 +358,11 @@ ULIDはGoの `oklog/ulid/v2` とcrypto/randで生成する。整数やUUID型へ
 | bootstrap | 専用ローカルcluster初期化とDB/role作成の管理者。資格情報をAPIへ渡さない |
 
 PUBLICからdatabaseのCONNECT/CREATE/TEMPとpublic schema権限を剥がし、必要なCONNECTを個別付与する。全LOGIN roleへNOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOBYPASSRLSを明示する。migrationは番号付きSQLをpsqlで明示適用し、schema_migrationsの版・DDLを同じtransactionで確定する。APIの起動時にDDLを実行しない。権限・制約の試験SQLは `backend/db/verify.sql`。実行状況は[検証記録](verification-issue-53.md)を参照する。
+
+## Issue #56のCollection物理設計
+
+委任に基づく実装判断として、既存論理モデルのCollection・CollectionSchedule・WatchTarget・InformationSourceをgoose版3へ具体化した。IDは既存と同じtext/C照合・正規ULID CHECK、現在設定の親子はCASCADE、User所有者はRESTRICT。Scheduleのcollection_idは一意。初回lookbackはaiなら日数NULL、daysなら1〜365をCHECKし、NULLによる条件すり抜けも拒否する。名前・cron・URLは非空text、任意の指示は既定空文字、enabledは既定false、display_orderはintegerで一意制約なし。設定4種の作成・更新日時はtimestamptz。
+
+索引はcollections(user_id,display_order,id)、watch_targets(collection_id,display_order,id)、information_sources(watch_target_id,id)。Scheduleの一意索引と主キーは重複作成しない。URLの一意制約は追加しない。通常APIに4テーブルのSELECTだけを付与し、User作成ロールの権限を増やさない。旧migrationは編集せず、API起動前の明示migrationを維持する。
+
+設定をONにするには有効対象とScheduleが必要という業務ルールは維持する。今回編集APIはなく、管理seedは常に停止中Collectionと有効対象・Scheduleを原子的に作る。#18で編集経路を追加する際には、同じトランザクションでのON条件・停止・削除条件を実装・検証する。#57の履歴への外部キーは今回先取りしない。版3のDownは現在設定の全削除になるため、通常操作・検証では実行しない。

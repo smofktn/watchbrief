@@ -9,7 +9,7 @@ export APP_ORIGIN API_ADDR API_PASSWORD_FILE LOGIN_ID DB_PASSWORD_FILE
 
 CURRENT_PACKAGES := ./...
 
-.PHONY: help deps dev build build-api build-user-create user-create fmt test test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+.PHONY: help deps dev build build-api build-user-create user-create fmt test test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,8 @@ help:
 	  '  make benchmark-password / check-input / verify-user-create' \
 	  '  make verify-login-api     実DBのログイン試験（検証セッション2件を保持）' \
 	  '  make verify-logout-api    実DBのログアウト・障害再試行を検証' \
+	  '  make seed-collections LOGIN_ID=fictional_user  架空の停止中設定を追加' \
+	  '  make verify-collections-api  所有者・404・DB権限の検証' \
 	  '  make tools-install / goose-install / sqlc-install' \
 	  '  make sqlc-generate / sqlc-vet / goose-validate' \
 	  '  make db-prepare / db-up / db-stop / db-status' \
@@ -68,6 +70,13 @@ check-input:
 
 verify-user-create: build-user-create
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-user-create.py
+
+seed-collections:
+	@test -n "$$LOGIN_ID" || { printf '%s\n' 'LOGIN_IDを指定してください' >&2; exit 2; }
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/seed-collections.py --login-id "$$LOGIN_ID"
+
+verify-collections-api: build-api build-user-create
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-collections-api.py
 
 verify-logout-api: build-api build-user-create
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-logout-api.py

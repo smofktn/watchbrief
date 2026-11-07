@@ -3,7 +3,8 @@ import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
-import { canonicalLoginPath, DEFAULT_PROTECTED_PATH, isProtectedPath, loginDestination, loginPathFor, LOGIN_PATH } from './navigation'
+import { isCollection, isCollectionSummary, type Collection, type CollectionSummary } from './collection-data'
+import { collectionIDFromPath, canonicalLoginPath, DEFAULT_PROTECTED_PATH, isProtectedPath, loginDestination, loginPathFor, LOGIN_PATH } from './navigation'
 
 const loginId = ref('')
 const password = ref('')
@@ -16,6 +17,73 @@ const routePath = ref(window.location.pathname)
 const logoutStatus = ref<HTMLElement | null>(null)
 const loginTitle = ref<HTMLElement | null>(null)
 let currentUserRequest = 0
+const collections = ref<CollectionSummary[]>([])
+const selectedCollection = ref<Collection | null>(null)
+const settingsState = ref<'idle' | 'loading' | 'ready' | 'error' | 'not-found'>('idle')
+const settingsMessage = ref('')
+const clearSettings = () => {
+  collections.value = []
+  selectedCollection.value = null
+  settingsMessage.value = ''
+  settingsState.value = 'idle'
+}
+const collectionPath = (id: string) => `/collections/${id}`
+const navigateTo = (path: string) => {
+  if (!isProtectedPath(path)) {
+    return
+  }
+  window.history.pushState(null, '', path)
+  handleNavigation()
+}
+const loadSettings = async (requestId = currentUserRequest) => {
+  clearSettings()
+  const path = routePath.value
+  if (path !== '/collections' && collectionIDFromPath(path) === null) {
+    return
+  }
+  settingsState.value = 'loading'
+  try {
+    const response = await fetch(`/api${path}`, { credentials: 'same-origin', cache: 'no-store' })
+    const body: unknown = await response.json().catch(() => null)
+    if (requestId !== currentUserRequest) {
+      return
+    }
+    const code = typeof body === 'object' && body !== null && 'error' in body
+      && typeof body.error === 'object' && body.error !== null && 'code' in body.error
+      ? body.error.code : undefined
+    if (response.status === 401 && code === 'unauthenticated') {
+      ++currentUserRequest
+      clearSettings()
+      currentLoginId.value = ''
+      replaceLocation(loginPathFor(path))
+      state.value = 'anonymous'
+      return
+    }
+    if (response.status === 404 && code === 'not_found') {
+      settingsState.value = 'not-found'
+      return
+    }
+    if (response.status === 200 && typeof body === 'object' && body !== null) {
+      if (path === '/collections' && 'collections' in body && Array.isArray(body.collections) && body.collections.every(isCollectionSummary)) {
+        collections.value = body.collections
+        settingsState.value = 'ready'
+        return
+      }
+      if (isCollection(body) && body.id === collectionIDFromPath(path)) {
+        selectedCollection.value = body
+        settingsState.value = 'ready'
+        return
+      }
+    }
+    settingsMessage.value = '処理に失敗しました。時間をおいて再度お試しください'
+  } catch {
+    if (requestId !== currentUserRequest) {
+      return
+    }
+    settingsMessage.value = '接続できません。再度お試しください'
+  }
+  settingsState.value = 'error'
+}
 
 const replaceLocation = (path: string) => {
   window.history.replaceState(null, '', path)
@@ -26,6 +94,7 @@ const loadCurrentUser = async () => {
   const requestId = ++currentUserRequest
   state.value = 'checking'
   currentLoginId.value = ''
+  clearSettings()
   message.value = ''
   try {
     const response = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
@@ -51,6 +120,7 @@ const loadCurrentUser = async () => {
       }
       currentLoginId.value = body.login_id
       state.value = 'authenticated'
+      await loadSettings(requestId)
       return
     }
     message.value = '処理に失敗しました。時間をおいて再度お試しください'
@@ -70,6 +140,7 @@ const handleNavigation = () => {
     return
   }
   ++currentUserRequest
+  clearSettings()
   loginId.value = ''
   password.value = ''
   currentLoginId.value = ''
@@ -166,6 +237,7 @@ const logout = async () => {
   }
   ++currentUserRequest
   currentLoginId.value = ''
+  clearSettings()
   loginId.value = ''
   password.value = ''
   inputError.value = ''
@@ -213,6 +285,41 @@ const logout = async () => {
         <section v-else-if="state === 'authenticated'" aria-labelledby="current-user-title">
           <h2 id="current-user-title">本人情報</h2>
           <p>ログインID：<span>{{ currentLoginId }}</span></p>
+          <nav aria-label="確認する情報">
+            <a href="/me" @click.prevent="navigateTo('/me')">本人情報</a>
+            <span> / </span><a href="/collections" @click.prevent="navigateTo('/collections')">コレクション設定</a>
+          </nav>
+          <section v-if="routePath === '/collections' || collectionIDFromPath(routePath) !== null" aria-labelledby="settings-title">
+            <h2 id="settings-title">コレクション設定（読み取り専用）</h2>
+            <p v-if="settingsState === 'loading'" role="status">設定を読み込んでいます。</p>
+            <template v-else-if="settingsState === 'error'">
+              <p role="alert">{{ settingsMessage }}</p><Button label="設定を再試行" @click="loadSettings()" />
+            </template>
+            <p v-else-if="settingsState === 'not-found'" role="alert">見つかりません。</p>
+            <template v-else-if="settingsState === 'ready' && routePath === '/collections'">
+              <p v-if="collections.length === 0">コレクションはありません。</p>
+              <ul v-else><li v-for="collection in collections" :key="collection.id">
+                <a :href="collectionPath(collection.id)" @click.prevent="navigateTo(collectionPath(collection.id))">{{ collection.name }}</a>
+                <span>（{{ collection.enabled ? 'ON' : 'OFF' }}）</span>
+              </li></ul>
+            </template>
+            <article v-else-if="settingsState === 'ready' && selectedCollection">
+              <h3>{{ selectedCollection.name }}</h3>
+              <p>状態：{{ selectedCollection.enabled ? 'ON' : 'OFF' }}</p>
+              <p>調査方針：{{ selectedCollection.research_instruction || '未設定' }}</p>
+              <p>初回の更新確認：{{ selectedCollection.initial_lookback_mode === 'ai' ? 'AIに任せる' : `${selectedCollection.initial_lookback_days}日前から` }}</p>
+              <p>生成予定（日本時間）：{{ selectedCollection.schedule?.cron_expression ?? '未設定' }}</p>
+              <p v-if="selectedCollection.targets.length === 0">ウォッチ対象はありません。</p>
+              <section v-for="target in selectedCollection.targets" :key="target.id">
+                <h4>{{ target.name }}（{{ target.enabled ? 'ON' : 'OFF' }}）</h4>
+                <p>補足指示：{{ target.instruction || '未設定' }}</p>
+                <p v-if="target.sources.length === 0">登録情報源はありません。</p>
+                <ul v-else><li v-for="source in target.sources" :key="source.id">
+                  {{ source.name }}：{{ source.url }}<p>{{ source.instruction }}</p>
+                </li></ul>
+              </section>
+            </article>
+          </section>
           <Button label="ログアウト" @click="logout" />
         </section>
         <section v-else-if="state === 'logging-out'" aria-busy="true">
