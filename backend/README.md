@@ -1,5 +1,7 @@
 # Backend
 
+初めての構築から画面・障害復旧までの入口は[ローカル起動・確認手順](../docs/verification-issue-17.md)。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで横断検証します。
+
 現在の `cmd/api` は、PostgreSQLのUserを共通Argon2idで照合し、セッション保存後に204と認証Cookieを返す。`GET /api/me` はCookieのトークンから本人のログインIDだけを返し、同じCookieの期限を更新する。
 
 asdfでルートの `.tool-versions` のGoを導入した後、このディレクトリで実行する。

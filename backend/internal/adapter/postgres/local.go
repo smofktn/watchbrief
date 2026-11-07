@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -34,12 +35,33 @@ func OpenUserCreator(ctx context.Context, passwordFile string) (*pgx.Conn, error
 	return openLocal(ctx, "watchbrief_user_creator", passwordFile)
 }
 
+func localPort() (string, error) {
+	value := os.Getenv("DB_PORT")
+	if value == "" {
+		return "5432", nil
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return "", ErrConnection
+		}
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return "", ErrConnection
+	}
+	return strconv.Itoa(port), nil
+}
+
 func openLocal(ctx context.Context, role, passwordFile string) (*pgx.Conn, error) {
+	port, err := localPort()
+	if err != nil {
+		return nil, err
+	}
 	password, err := readLocalPassword(passwordFile)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := pgx.ParseConfig("host=127.0.0.1 port=5432 dbname=watchbrief user=" + role + " sslmode=disable connect_timeout=5")
+	cfg, err := pgx.ParseConfig("host=127.0.0.1 port=" + port + " dbname=watchbrief user=" + role + " sslmode=disable connect_timeout=5")
 	if err != nil {
 		return nil, ErrConnection
 	}
@@ -53,11 +75,15 @@ func openLocal(ctx context.Context, role, passwordFile string) (*pgx.Conn, error
 }
 
 func OpenAPI(ctx context.Context, passwordFile string) (*pgxpool.Pool, error) {
+	port, err := localPort()
+	if err != nil {
+		return nil, err
+	}
 	password, err := readLocalPassword(passwordFile)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := pgxpool.ParseConfig("host=127.0.0.1 port=5432 dbname=watchbrief user=watchbrief_api sslmode=disable connect_timeout=5")
+	cfg, err := pgxpool.ParseConfig("host=127.0.0.1 port=" + port + " dbname=watchbrief user=watchbrief_api sslmode=disable connect_timeout=5")
 	if err != nil {
 		return nil, ErrConnection
 	}

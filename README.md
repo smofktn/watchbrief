@@ -4,9 +4,6 @@ WatchBriefは、気になる企業・人物・AI・技術などの公開情報�
 
 情報を集めるだけでなく、出典を残し、「現在の状態」「更新・新着情報」「AIによる整理」を分けて読める状態を目指します。
 
-> [!IMPORTANT]
-> Issue #53は、設計を利用者とAIで検討し、合意した範囲の実装・検証をAIが担当する形で進めています。以前のAIによる未完成の実装案を参考として保持していますが、採用済み・利用可能・検証完了とは扱いません。
-
 ## 何のためのものか
 
 WatchBriefは、継続して追いかけたい公開情報をコレクションごとにまとめる仕組みです。設定したスケジュールで非同期に調査し、保存済みレポートを認証付きWeb画面から日付別・コレクション別に閲覧します。
@@ -27,11 +24,11 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-Vue・TypeScript・Vite・PrimeVueによる表示確認用の最小画面があります。[Frontendの起動手順](frontend/README.md)で確認できます。[Go API](backend/README.md)は準備済みのローカルDBへ接続して起動します。画面からVite経由でAPIへ入力を送信できます。[現在の管理コマンド](backend/README.md#架空userの作成)で架空UserをDBへ追加できます。ログイン認証・セッション保存・Cookie発行は接続済み。Cookieから本人情報を取得し、ログインIDを表示できます。画面を再読み込みしてもCookieで再認証します。 [ログアウトAPI](docs/API仕様/post-api-logout.md)は、対象セッションの削除・旧トークン拒否まで実装しています。本人情報画面のボタンから直接ログアウトでき、開始時に本人情報を消して、成功時はログインフォーム、失敗時は再試行を表示します。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。設定とReportは読み取り専用で、Report本文はテキスト表示です。
 
-架空Userの管理コマンド、Vueログイン画面、Goのログイン・本人情報API、認証DB migrationの既存AI案があります。旧案は現在の実装と区別します。現在は架空User作成からログイン・本人情報表示までの最小経路を実装しています。[過去のAI担当による検証記録と制限](docs/verification-issue-53.md)を確認してください。
+最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
-初期構成はEC2 1台にnginx・アプリ・PostgreSQLを同居させ、Ubuntu Server LTSとsystemdを使い、手動でデプロイする方針です。最小骨格にはVue・Go、DBアクセスにはSQL＋sqlcを使います。[既存AI案の具体方式](docs/auth-implementation.md)は参考であり、それだけで採用決定にはしません。配置・運用の合意事項と設計案は[システム設計](docs/system-design.md)にまとめています。
+設定編集・本格的な閲覧は #18、Scheduler・Workerによる生成は #19、外部接続は #20、AWS配備は #21、ログイン試行制限・認証専用記録は #49の後続作業です。現在の架空seedは生成処理ではありません。旧AI案の文書は参考として区別し、現在の契約は[画面仕様](docs/画面仕様/README.md)・[API仕様](docs/API仕様/README.md)を参照します。
 
 ## ドキュメント
 
@@ -53,9 +50,7 @@ Vue・TypeScript・Vite・PrimeVueによる表示確認用の最小画面があ�
 
 ## ローカルで見る
 
-現在の最小骨格は[Frontend](frontend/README.md)・[Backend](backend/README.md)の手順で起動できます。DB単体の起動は[ローカルPostgreSQL](docs/local-postgresql.md)を参照してください。ログインにはDBの初期設定・migrationと架空User作成が必要です。
-
-[既存AI案のローカル起動・検証手順](docs/local-development.md)は参考として残しており、全手順の実行成功は未確認です。ファイルを確認するだけなら、通常のGit cloneで取得できます。
+[新規環境の起動・確認手順](docs/verification-issue-17.md)を入口に、[Frontend](frontend/README.md)・[Backend](backend/README.md)・[ローカルPostgreSQL](docs/local-postgresql.md)で詳細を確認できます。旧AI案の `docs/local-development.md` は現在の起動手順として使いません。
 
 ```bash
 git clone https://github.com/smofktn/watchbrief.git

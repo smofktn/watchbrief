@@ -23,6 +23,14 @@ def main():
 
 
 def run_migration(root, command):
+    port = os.environ.get("DB_PORT") or "5432"
+    try:
+        valid_port = port.isascii() and port.isdecimal() and 1 <= int(port) <= 65535
+    except ValueError:
+        valid_port = False
+    if not valid_port:
+        raise SystemExit("DB_PORT must be 1-65535.")
+    port = str(int(port))
     binary = root / ".local/bin/goose"
     if not binary.is_file():
         raise SystemExit("Run make goose-install first.")
@@ -42,12 +50,12 @@ def run_migration(root, command):
             del environment[name]
     with tempfile.NamedTemporaryFile(mode="w", dir=root / ".local", prefix="pgpass-") as passfile:
         escaped = password.replace("\\", "\\\\").replace(":", "\\:")
-        passfile.write(f"127.0.0.1:5432:watchbrief:watchbrief_migrator:{escaped}\n")
+        passfile.write(f"127.0.0.1:{port}:watchbrief:watchbrief_migrator:{escaped}\n")
         passfile.flush()
         environment.update({
             "PGPASSFILE": passfile.name,
             "GOOSE_DRIVER": "postgres",
-            "GOOSE_DBSTRING": "host=127.0.0.1 port=5432 dbname=watchbrief user=watchbrief_migrator sslmode=disable connect_timeout=5",
+            "GOOSE_DBSTRING": f"host=127.0.0.1 port={port} dbname=watchbrief user=watchbrief_migrator sslmode=disable connect_timeout=5",
         })
         result = subprocess.run(
             [str(binary), "-env=none", "-dir", str(root / "backend/db/goose"), "-table", "app.goose_db_version", "-timeout", "30s", command],
