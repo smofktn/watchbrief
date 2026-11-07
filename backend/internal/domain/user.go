@@ -11,5 +11,6 @@ type User struct {
 
 var (
 	ErrDuplicateLoginID = errors.New("login ID already exists")
+	ErrPasswordChanged  = errors.New("password changed during login")
 	ErrUserStore        = errors.New("user storage operation failed")
 )

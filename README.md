@@ -98,3 +98,5 @@ make user-create LOGIN_ID=fictional_user
 実装上の注意、運用保守ルール、未決定事項の扱いは[開発・運用ルール](CONTRIBUTING.md)を参照してください。
 
 保存済みReportの最小経路は `make db-migrate` → `make seed-reports LOGIN_ID=fictional_user` → ログイン → `/reports`。架空Userを先に作成する。`make verify-reports-api` の前提・保持する架空データ・制限は[Backend手順](backend/README.md#架空の保存済みreport)、契約は[Report API](docs/API仕様/get-api-reports.md)と[画面仕様](docs/画面仕様/保存済みReportの取得.md)を参照する。
+
+パスワード再設定は `make password-reset LOGIN_ID=fictional_user` で行います。初期設定・既存DBへの専用ロール追加と試験は[再設定の詳細](docs/password-reset.md)を参照してください。

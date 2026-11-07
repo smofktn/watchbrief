@@ -19,7 +19,10 @@ func (s *loginStoreFake) ByLoginID(context.Context, string) (domain.User, error)
 	s.findCalls++
 	return domain.User{ID: "user-id", LoginID: "user", PasswordHash: "stored-hash"}, s.findErr
 }
-func (s *loginStoreFake) CreateSession(_ context.Context, session domain.Session) error {
+func (s *loginStoreFake) CreateSession(_ context.Context, session domain.Session, expectedHash string) error {
+	if expectedHash != "stored-hash" {
+		panic("missing verified hash")
+	}
 	s.sessions = append(s.sessions, session)
 	return s.saveErr
 }
@@ -50,6 +53,7 @@ func TestLoginSessionCreationAndFailures(t *testing.T) {
 		{"corrupt stored hash", nil, errors.New("bad hash"), nil, false, false, false, ErrLogin, 0},
 		{"token generation failure", nil, nil, nil, true, true, false, ErrLogin, 0},
 		{"ID generation failure", nil, nil, nil, true, false, true, ErrLogin, 0},
+		{"concurrent reset", nil, nil, domain.ErrPasswordChanged, true, false, false, ErrInvalidCredentials, 1},
 		{"save failure", nil, nil, domain.ErrSessionStore, true, false, false, ErrLogin, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

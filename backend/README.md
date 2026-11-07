@@ -152,8 +152,21 @@ Collectionのverifyは空一覧用の架空User1件を初回だけCLIで作る�
 
 `make verify-reports-api` は#53/#54の架空User fixtureがある環境で、空きポートAPIを起動し、再実行/衝突rollback、所有者認可、DB制約/権限、Collection削除後の履歴保持、ログ非混入を確認する。#53/#54 fixture未作成なら先に `make verify-user-create verify-logout-api` を実行する。検証専用の空Userと衝突確認Collection、削除後保持を確認する成功履歴一式は保持する。既存デモCollectionは削除しない。このコマンドは新しい検証履歴を毎回追加するため、大量の繰返し実行は避ける。
 
-Report APIの実DB障害注入と#17全体の障害横断確認は #59、パスワード再設定は #58へ引き継ぐ。生成・Workerは #19、本格閲覧は #18で扱う。
+Report APIの実DB障害注入と#17全体の障害横断確認は #59、パスワード再設定は[管理コマンドの詳細](../docs/password-reset.md)を参照する。生成・Workerは #19、本格閲覧は #18で扱う。
 
 保存Report seedはfixture namespace v3を使う。対象の業務状態は「重要な変化あり」、現在状態と更新事実の双方に同じ対象の出典を付け、本文・構造化事実・生成入力snapshotを一致させる。旧v1/v2の検証途中履歴が残る環境では、それらは以前の確認用記録であり、現行seedの参照例ではない。既存履歴は変更・削除せず、新規環境にはv3だけを追加する。`make verify-reports-api` はv3を明示して内容一致と全fixture行の再実行不変も確認する。
 
 取得失敗の本文表示は正本のルールに従って情報源の名称・URLだけとし、reasonは構造化行に保持して本文へ含めない。
+
+## パスワード再設定（Issue #58）
+
+既存DBでは初回だけ `make db-provision-password-resetter`、続いて `make db-migrate` を明示実行する。新規DBの `make db-bootstrap` は再設定専用ロールも作る。既存ロール・資格情報は上書きしない。[初期設定と既存環境の追加手順](../docs/local-postgresql.md#再設定用の専用ロール追加issue-58)を参照する。
+
+```bash
+make password-reset LOGIN_ID=fictional_user
+make verify-password-reset
+```
+
+IDを指定し、新パスワードを2回、端末で非表示入力する。共通Argon2idでハッシュ化してから専用ロールで接続し、User更新と全session削除を一体でcommitする。`RESET_DB_PASSWORD_FILE` はDBの秘密ファイルのパスだけを指定でき、既定は `../.local/watchbrief-password-resetter-password`。アプリのパスワードをMake変数・引数に入れない。
+
+不一致・入力不正・対象なしでは変更しない。通信障害で結果不明の場合はDB状態を確認してから再実行する。処理中APIの完了可能性、ロックとPHC再読取による競合制御、再設定同士の順序、専用fixtureの保持範囲と試験の制限は[再設定の詳細](../docs/password-reset.md)にまとめる。

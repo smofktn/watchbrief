@@ -24,6 +24,32 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const lockUserCredentials = `-- name: LockUserCredentials :exec
+SELECT pg_advisory_xact_lock(hashtextextended('watchbrief.credentials:' || $1::text, 0))
+`
+
+func (q *Queries) LockUserCredentials(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, lockUserCredentials, userID)
+	return err
+}
+
+const resetUserPassword = `-- name: ResetUserPassword :execrows
+UPDATE app.users SET password_hash = $2, updated_at = clock_timestamp() WHERE id = $1
+`
+
+type ResetUserPasswordParams struct {
+	ID           string
+	PasswordHash string
+}
+
+func (q *Queries) ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetUserPassword, arg.ID, arg.PasswordHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const userByLoginID = `-- name: UserByLoginID :one
 SELECT id, login_id, password_hash FROM app.users WHERE login_id = $1
 `
@@ -39,4 +65,26 @@ func (q *Queries) UserByLoginID(ctx context.Context, loginID string) (UserByLogi
 	var i UserByLoginIDRow
 	err := row.Scan(&i.ID, &i.LoginID, &i.PasswordHash)
 	return i, err
+}
+
+const userIDByLoginID = `-- name: UserIDByLoginID :one
+SELECT id FROM app.users WHERE login_id = $1
+`
+
+func (q *Queries) UserIDByLoginID(ctx context.Context, loginID string) (string, error) {
+	row := q.db.QueryRow(ctx, userIDByLoginID, loginID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const userPasswordHash = `-- name: UserPasswordHash :one
+SELECT password_hash FROM app.users WHERE id = $1
+`
+
+func (q *Queries) UserPasswordHash(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, userPasswordHash, id)
+	var password_hash string
+	err := row.Scan(&password_hash)
+	return password_hash, err
 }

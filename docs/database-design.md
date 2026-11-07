@@ -68,7 +68,7 @@
 
 ## 通常実行と管理操作のDB権限（Issue #1での方針合意）
 
-通常のアプリ実行用と、テーブル構造変更・DBユーザー管理などの管理用の権限を分ける。通常のアプリには必要なデータ操作だけを許可し、DDLとDBユーザー管理の権限を与えない。これは閲覧・変更する行の所有者をAPIが検証する認可とは別の制御であり、両方が必要である。具体的なDBロール名、API・Scheduler・Worker・停止監視ごとの権限配分、migration・初期ユーザー作成・パスワード再設定用コマンドの接続権限は実装・構築時に設計・検証する。権限分離の方針自体はテーブル・カラム・業務上の削除方針を変更しない。
+通常のアプリ実行用と、テーブル構造変更・DBユーザー管理などの管理用の権限を分ける。通常のアプリには必要なデータ操作だけを許可し、DDLとDBユーザー管理の権限を与えない。これは閲覧・変更する行の所有者をAPIが検証する認可とは別の制御であり、両方が必要である。具体的なDBロール名、API・Scheduler・Worker・停止監視ごとの権限配分、migration・初期ユーザー作成・パスワード再設定用コマンドの接続権限は各実装・構築時に設計・検証する。現在のローカル再設定権限は[再設定の詳細](password-reset.md#最小db権限と索引)を参照する。権限分離の方針自体はテーブル・カラム・業務上の削除方針を変更しない。
 
 ## 認証セッション（Issue #1での方式合意）
 
@@ -80,9 +80,9 @@
 | `user_id` | 必須。Userへの外部キー。User削除は初期MVPで提供せず、参照中の削除はRESTRICTで拒否 |
 | `token_hash` | 必須・一意。crypto/randで作る32byte乱数のSHA-256。生トークンは保存せず、Cookieの値から計算して照合する |
 
-Userは0件以上の認証セッションを持ち、各セッションは必ず1 Userに属する。APIは `token_hash` の一意検索を使う。認証成功時に保存し、ログアウト後は同じトークンで認証できないよう無効化する。トークン生成・ハッシュとCookie更新は[現在の基本設計](system-design.md#issue-53の基本設計)の合意に従う。#54のログアウトは[対象行の物理削除](#issue-54のログアウト保存処理)に合意した。再設定の競合制御、不要レコード整理等は担当Issueで具体化する。ログイン側のCookie表現はパディングなしBase64URL、DBは元32byteのSHA-256（bytea・32byte）とする。時間による失効や複数端末ログアウト管理を今回追加するものではない。
+Userは0件以上の認証セッションを持ち、各セッションは必ず1 Userに属する。APIは `token_hash` の一意検索を使う。認証成功時に保存し、ログアウト後は同じトークンで認証できないよう無効化する。トークン生成・ハッシュとCookie更新は[現在の基本設計](system-design.md#issue-53の基本設計)の合意に従う。#54のログアウトは[対象行の物理削除](#issue-54のログアウト保存処理)に合意した。再設定の物理DELETE・競合制御は[管理コマンド](password-reset.md)に従う。不要レコード整理等は後続の担当Issueで具体化する。ログイン側のCookie表現はパディングなしBase64URL、DBは元32byteのSHA-256（bytea・32byte）とする。時間による失効や複数端末ログアウト管理を今回追加するものではない。
 
-管理コマンドによるパスワード再設定時は例外として、Userのパスワードハッシュ更新と、そのUserに属する既存セッションすべての無効化を同じDBトランザクションで確定する。途中で失敗した場合は全体をロールバックし、片方だけを残さない。他Userのセッション、Collection設定、Job・Attempt・Reportは更新しない。無効化方法と `user_id` からの処理に必要な索引は物理設計で決める。同時ログイン・同時再設定との競合でも旧パスワードで認証したセッションが無効化をすり抜けないよう、具体的な排他制御を詳細設計・試験する。再設定方針を表す追加カラムはここで固定せず、無効化方式に応じて物理設計で選ぶ。
+管理コマンドによるパスワード再設定時は例外として、Userのパスワードハッシュ更新と、そのUserに属する既存セッションすべての無効化を同じDBトランザクションで確定する。途中で失敗した場合は全体をロールバックし、片方だけを残さない。他Userのセッション、Collection設定、Job・Attempt・Reportは更新しない。対象user_idの全sessionをDELETEし、auth_sessions(user_id)の索引を使う。同時ログイン・同時再設定との競合でも旧パスワードで認証したセッションが無効化をすり抜けないよう、[共通transaction advisory lockとPHC再読取](password-reset.md#ログインとの競合制御)で排他制御する。再設定方針を表す追加カラムはここで固定せず、無効化方式に応じて物理設計で選ぶ。
 
 ## ER図
 
@@ -321,9 +321,9 @@ Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実
 
 初期のDB・ロール作成は別の管理操作とし、APIやUser作成コマンドへsuperuserを渡さない。対象テーブルの所有権と所有者ロールへのmembershipも分け、通常APIがSET ROLE等でDDL権限を得られないようにする。接続に必要なCONNECT・schema USAGE等、具体ロール名・資格情報の注入方法・goose用の所有権は実装時に具体化する。接続情報をそれぞれ用意する手間は増すが、通常APIの不具合等で変更できる範囲を限定できる。
 
-これはPostgreSQLへの接続権限であり、アプリのログインUserの区別とは別物。認証済みUserが自分の情報だけを取得できるAPIの認可も維持する。#54のDELETE追加は[ログアウト保存処理](#issue-54のログアウト保存処理)に従う。#58の再設定等で必要な追加権限は、そのIssueで必要性を確認する。[PostgreSQLのロール](https://www.postgresql.org/docs/current/user-manag.html)・[権限](https://www.postgresql.org/docs/current/ddl-priv.html)を根拠とする。用途別の分担の合意と、以下のローカル初期設定・テーブル権限の実装範囲を区別する。
+これはPostgreSQLへの接続権限であり、アプリのログインUserの区別とは別物。認証済みUserが自分の情報だけを取得できるAPIの認可も維持する。#54のDELETE追加は[ログアウト保存処理](#issue-54のログアウト保存処理)に従う。#58の再設定専用ロールの権限と索引は[再設定の詳細](password-reset.md#最小db権限と索引)に従う。[PostgreSQLのロール](https://www.postgresql.org/docs/current/user-manag.html)・[権限](https://www.postgresql.org/docs/current/ddl-priv.html)を根拠とする。用途別の分担の合意と、以下のローカル初期設定・テーブル権限の実装範囲を区別する。
 
-現在のローカル初期設定では、接続ロールを `watchbrief_api`・`watchbrief_user_creator`・`watchbrief_migrator` とし、migration用が `app` schemaを直接所有する。API・User作成用は所有者へのmembershipを持たない。手順・秘密ファイル・初期権限は[ローカルPostgreSQL](local-postgresql.md#用途別の初期設定)で管理する。上表のSELECT/INSERTは版1、セッションDELETEは版2のmigrationで付与する。実行した権限試験と未検証範囲はIssueへ記録する。
+現在のローカル初期設定では、接続ロールを `watchbrief_api`・`watchbrief_user_creator`・`watchbrief_password_resetter`・`watchbrief_migrator` とし、migration用が `app` schemaを直接所有する。API・User作成・再設定用は所有者へのmembershipを持たない。手順・秘密ファイル・初期権限は[ローカルPostgreSQL](local-postgresql.md#用途別の初期設定)で管理する。上表のSELECT/INSERTは版1、セッションDELETEは版2のmigrationで付与する。実行した権限試験と未検証範囲はIssueへ記録する。
 
 ## Issue #54のログアウト保存処理
 
@@ -331,7 +331,7 @@ Markdownライブラリ、timeout・heartbeat間隔、queue・監視などの実
 
 現在のgooseに `000002_logout_session.sql` を追加し、API用 `watchbrief_api` にauth_sessionsのDELETEを付与する。Downはこの権限のREVOKEだけで、削除済みセッションを復元しない。User作成用ロールのセッション権限、APIのUser更新・DDL・ロール管理権限は追加しない。
 
-これはテーブル単位のDB接続権限であり、DBロールがアプリUserごとの行制限を保証するものではない。HTTP受付で検証したCookieのハッシュだけをユースケース・保存アダプターへ渡し、固定の条件付きSQLで対象を絞る。呼び出し側からUser IDやセッション記録IDを指定して削除するAPIは追加しない。パスワード再設定による全既存セッション無効化と競合制御は #58で具体化する。
+これはテーブル単位のDB接続権限であり、DBロールがアプリUserごとの行制限を保証するものではない。HTTP受付で検証したCookieのハッシュだけをユースケース・保存アダプターへ渡し、固定の条件付きSQLで対象を絞る。呼び出し側からUser IDやセッション記録IDを指定して削除するAPIは追加しない。パスワード再設定による全既存セッション削除と競合制御は[再設定の詳細](password-reset.md)を参照する。
 
 ## Issue #53の認証物理スキーマ
 

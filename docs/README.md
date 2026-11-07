@@ -59,3 +59,5 @@ Issue #3では、ドメインモデルとDB設計に関する選択理由を1議
 - [Issue #14: 将来のインフラ移行](https://github.com/smofktn/watchbrief/issues/14)：DBのRDS分離とアプリのコンテナ化・ECSなどへの移行を追跡する。初期MVP対象外。
 
 文書は現在の結論を読むために使い、Issueコメントは「なぜその結論を選んだか」を確認するために使う。
+
+管理CLIによる再設定・競合制御・権限と検証入口は[パスワード再設定](password-reset.md)を参照する。
