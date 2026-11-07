@@ -1,5 +1,7 @@
 # WatchBrief 技術選定の前提
 
+> **Issue #53の既存案について**：以前のAIが作成した未完成の実装案と、それに伴う文書変更を参考として保持している。具体バージョン、ハッシュ、Cookie・CSRF、migration等は、今回利用者と確認したもの以外は採用済みと扱わない。過去の検証結果も今回の実動作確認とは区別する。現在の進め方は[作業計画](work-plan.md#利用者主体で子issueを進める運用合意済み)を参照する。
+
 > [!NOTE]
 > この文書は、技術を選ぶときの目的、重視する性質、採用済みの方針と現在の候補を整理する。候補は採用決定ではない。決定した内容は、理由と影響を記録した上でシステム設計や実装文書へ反映する。
 
@@ -22,7 +24,7 @@ WatchBriefの主目的は、個人向けの情報整理Webアプリを作るこ�
 - 性能を推測だけで最適化せず、代表的な処理を計測できること
 - 認証情報や利用者データをPublicリポジトリへ含めないこと
 
-過度なCQRSやイベントソーシングは初期候補にせず、必要十分な責務分離を目指す。軽量なDDDとPorts and Adaptersは候補だが、frameworkやディレクトリ構成を決める前に固定しない。
+過度なCQRSやイベントソーシングは初期候補にせず、必要十分な責務分離を目指す。Issue #53のBackendでは、ドメイン・ユースケースへ依存を向ける小さなクリーンアーキテクチャを採用する。HTTP・CLI・DB等の具体実装を外側に置き、必要なインターフェースだけを使う。[責務と依存方向](system-design.md#go内部の依存方向合意済み)を参照する。全面的なDDD実装や、すべての型の抽象化を採用する決定ではない。具体パッケージ・frameworkは必要な段階で確認する。
 
 ## 採用済みの方針と現在の候補
 
@@ -42,28 +44,60 @@ WatchBriefの主目的は、個人向けの情報整理Webアプリを作るこ�
 | 初期の起動管理 | systemdで各プロセスを管理する | 採用。具体設定は未決定 |
 | 初期デプロイ | 運用者が更新を開始する手動デプロイ | 採用。配置・再起動・確認・切り戻しの流れを学び、後の自動化を見据える。スクリプト化、ビルド場所、転送、DB変更対応、自動化方式・時期は未決定 |
 | 将来のインフラ | DBをRDSへ分離し、アプリをコンテナ化してECSなどで動かすことを目指す | 将来の方向性として合意。移行時期・条件・具体的な実施順、ECSの採用確定とFargateなどの実行方式は未決定 |
-| Frontend | 最小骨格にはVueを使う | 方針に合意。TypeScript、Vite、Vue Routerと具体バージョンは周辺技術の候補。実装は別作業 |
+| Frontend | Vue 3・TypeScript・Vite | 利用者と採用に合意。Vueで画面を構成し、TypeScriptで型を検査し、Viteで開発・ビルドする。旧AI案のJavaScript module・独自ビルドは今回の採用構成としない。Node.jsは26.13.0を固定し、依存の具体バージョンと互換性は導入時に確認する |
+| UIコンポーネント | PrimeVue | 利用者と採用に合意。Vue 3・TypeScript対応の部品を組み合わせる。標準テーマから始める案で、具体テーマ・版・ライセンス条件は導入時に確認する。有料テンプレート・サポートの購入は含まない |
 | Frontend状態管理 | TanStack Query | サーバー状態管理の候補。自動retry・再取得・cache既定値はそのまま採用しない |
 | Client store | Piniaは初期候補にしない | 必要性が生じた場合に再検討する |
-| Backend | 最小骨格にはGoを使う | 方針に合意。バージョン、HTTP frameworkとDBアクセス方式は未決定。実装は別作業 |
-| DBアクセス | GORM、または `database/sql` + sqlc | 比較候補。ドメインモデルをORM構造体へ過度に依存させない |
-| 初期認証 | アプリのID・パスワード認証とPostgreSQLで管理するサーバー側セッション。Cookieでランダムトークンを渡す | Issue #1で採用。ログアウト時にサーバー側で無効化でき、既存DBを使えることを重視。Basic認証・自己完結型JWTは見送り。Cookie属性・CSRF方式は利用者の意向で実装時の詳細設計へ引き継ぐ。具体ライブラリ等は未決定 |
-| ユーザー作成・パスワード再設定 | 共通ハッシュ処理を使う管理コマンド。再設定では対象Userの全既存セッションを無効化 | Issue #1で再設定時の失効に合意。パスワード更新と失効は同じDBトランザクションで確定。具体ハッシュ・入力・コマンド・競合制御は #17 で詳細化 |
+| Backend | Go。開発用の版は1.27.3 | Go採用とasdfでの版管理に合意。HTTP framework・具体ドライバーは必要な段階で確認する。旧AI案のnet/http等は今回の採用決定と区別する |
+| DBアクセス | SQL＋sqlc | 利用者と方針に合意。User保存にはpgx v5.12.0、コード生成はsqlc v1.31.1を固定して使う。旧AI案の比較・版は[参考の実装方式](auth-implementation.md#最小構成と選定)に保持する |
+| 初期認証 | アプリのID・パスワード認証とPostgreSQLで管理するサーバー側セッション。Cookieでランダムトークンを渡す | Issue #1で採用。ログアウト時にサーバー側で無効化でき、既存DBを使えることを重視。Basic認証・自己完結型JWTは見送り。Cookieの保護属性・Go標準CSRF防御・Origin完全一致検証は[API共通仕様](API仕様/README.md#cookieの保護とcsrf合意済み)に合意。保存更新等の未決定事項は実装前に具体化。旧AI案とは区別する |
+| パスワードハッシュ | Argon2id | 利用者と方式に合意。ランダムsaltを使い、管理コマンドとAPIで同じ処理を共有する。[設計](system-design.md#共通パスワードハッシュ合意済み)に従い、入力条件は[プロダクト仕様](product-definition.md#ユーザーと認証)の合意に従い、初期プロファイル・ライブラリ・保存形式は[共通ハッシュ](password-hashing.md)へ記録する |
+| ユーザー作成・パスワード再設定 | 共通ハッシュ処理を使う管理コマンド。再設定では対象Userの全既存セッションを無効化 | Issue #1で再設定時の失効に合意。パスワード更新と失効は同じDBトランザクションで確定。User作成・共通hashの詳細は[Issue #53の基本設計](system-design.md#issue-53の基本設計)から具体化。再設定は[専用CLI・共通transaction advisory lock・PHC再読取](password-reset.md)で実装 |
 | ログイン失敗制限・認証専用記録 | 初期MVPでは作り込まず後続改善 #49 へ回す | 利用者の指示を反映。通常の認証・認可・入力検証と既存のエラーログ・秘密情報非出力は維持。具体的な制限・イベント記録・専用監査機能は未採用 |
-| 通常実行と管理操作の権限 | アプリの非root実行、DB通常実行用と管理用の権限分離、AWS APIが必要な場合の最小権限IAMロール | Issue #1で大枠に合意。通常のアプリへOS・DB・AWSの管理権限を渡さない。ユーザー・ロール名、プロセス別の配分、具体設定・試験は実装・構築へ |
+| 通常実行と管理操作の権限 | アプリの非root実行、DB通常実行用と管理用の権限分離、AWS APIが必要な場合の最小権限IAMロール | #53では[通常API・User作成・migrationの用途別分担](database-design.md#用途別のdb権限合意済み)にも合意。Issue #1で大枠に合意。通常のアプリへOS・DB・AWSの管理権限を渡さない。ユーザー・ロール名、プロセス別の配分、具体設定・試験は実装・構築へ |
 | Secretの保管 | 初期のEC2保護ファイル案と、Secrets Managerへの早期移行 | 利用者の意向を記録。具体方式・移行時期・費用は未決定。取得処理をアプリの接続処理から分ける構成は提案。Parameter Storeの中間導入やAWS作成・課金は決定していない |
-| migration | versioned migration | 優先候補。本番起動時の自動migrationだけに依存しない |
+| migration | gooseによるversioned SQL migration | 利用者と採用に合意。SQLの適用・適用済みバージョン管理をgooseへ任せ、API起動とは別に管理用権限で明示実行する。旧AI案の独自psqlスクリプトは今回の採用方式ではない |
 | DBの配置 | 初期はアプリと同じEC2、将来はRDSへ分離 | 採用。自前運用とマネージドサービスの違いを段階的に学ぶ |
 | RDSの公開境界 | インターネットへ公開せず、通常のDB接続元をアプリ実行環境に限定する | 将来RDSを使う場合の方針として合意。具体設定と管理用接続経路は未決定 |
 | 初期DB製品 | PostgreSQL | 採用。複数プロセスでの利用、自前DBの運用学習、将来同じエンジンでRDSへ移せることを重視。SQLiteは初期の管理が簡単だが、今回の目的から見送る |
 | 初期DBストレージ | OS用とは別のDB用EBSへPostgreSQLのデータを保存し、EC2削除時も保持（`DeleteOnTermination=false`） | 採用。保持中は課金対象。容量、種類、保存場所、マウント・権限、保持後の管理・削除手順とOS用EBSの削除方針は未決定。バックアップではない |
 | EBS暗号化 | OS用・DB用とも東京リージョンのAWS管理KMS鍵 `aws/ebs` で暗号化する | 採用。初期にはカスタマー管理鍵を作らず管理負担を抑える。構築時に暗号化状態と使用鍵を確認する |
-| DBの具体構成 | PostgreSQLのバージョン、将来のRDS移行先などを比較する | バージョン、将来の移行先エンジン（Auroraを含む比較）、サイズ、可用性構成、バックアップ設定、料金見積もりは未決定 |
+| DBの具体構成 | ローカルはPostgreSQL 18.6、公式postgres:18.6-bookworm | ローカルで採用。起動・認証・永続データは[ローカルPostgreSQL](local-postgresql.md)を参照。本番版と将来の移行先エンジン（Auroraを含む比較）、サイズ、可用性構成、バックアップ設定、料金見積もりは未決定 |
 | AI | Amazon Bedrock、OpenAI API、または併用 | 未決定。BedrockはAWS学習との相性から候補 |
 | 情報収集 | AIサービスとは別のWeb検索・取得手段 | 未決定 |
 | 外部URL取得のSSRF対策 | 初期MVPで内部向け接続を拒否し、名前解決後の実接続先・転送先にも適用 | Issue #1で大枠に合意。具体アドレス判定・HTTPクライアント・外部サービス側の制御範囲と試験は #20 へ |
 | 外部サイトの危険判定 | 悪意あるサイトを拒否する仕組みを将来導入したい意向 | #50で追跡。初期MVPへ追加しない。危険性の定義・方式・サービス・料金は未決定。初期SSRF方針とは別に扱う |
 | IaC | ツールと導入時期を含め未決定 | システム設計に再現可能な構築記録と導入時期の比較案を記載。ツール選定は構築作業へ引き継ぐ |
+
+Issue #53の現在の構成と検討中の画面・APIは[基本設計案](system-design.md#issue-53の基本設計)を参照する。旧AI案の具体バージョン・パスワードハッシュ・Cookie・CSRF・配置と比較理由は[参考の実装方式](auth-implementation.md)に保持する。旧案だけを理由に採用しない。Router・TanStack Query・queue等は必要性を確認してから判断する。
+
+Frontendの一次情報は[VueのTypeScript対応](https://vuejs.org/guide/typescript/overview.html)、[Vite](https://vite.dev/guide/)、[PrimeVueのソース・ライセンス](https://github.com/primefaces/primevue)を参照する。UIライブラリは画面部品を担当し、認証・認可・CSRF・APIの入力検証を代替しない。
+
+PrimeVueの採用合意は、最新メジャー版の利用条件への同意を意味しない。npm配布物のPrimeVue 5.0.4と `@primeuix/themes` 3.1.0は、従来のMIT版とは異なるPrimeUI Licenseを記載し、ライセンスキー・Community Licenseの適格条件と年次更新を求めている。これらの版は未導入・未採用とする。利用者へ条件と保守上の制限を説明し、今回はMIT版の4系で進める。配布物：[PrimeVue 5.0.4](https://registry.npmjs.org/primevue/-/primevue-5.0.4.tgz)、[themes 3.1.0](https://registry.npmjs.org/@primeuix/themes/-/themes-3.1.0.tgz)。旧GitHubリポジトリのMIT表記だけで最新版の条件を判断しない。
+
+表示確認用の骨格はPrimeVue 4.5.5と `@primeuix/themes` 1.2.5を固定し、標準テーマAuraを使う。両配布物のライセンスはMITだが、[公式リポジトリ](https://github.com/primefaces/primevue)では4系はセキュリティ修正のみの保守とされ、通常の不具合修正・新機能開発は継続しない。無料の最新版として扱わず、この保守上の制限を維持する。Vue 3.5.44・Vite 8.3.5・plugin-vue 6.0.10・TypeScript 6.0.3・vue-tsc 3.3.14を固定する。TypeScript 7は型検査ツールの対応範囲外のため使わない。現在の起動・ビルド手順は[Frontend](../frontend/README.md)を参照する。
+
+### migrationツール（goose採用）
+
+gooseを使い、`backend/db/goose/000001_create_auth.sql` 等の番号付きSQLでスキーマ変更を管理する。現在のDDLと起動手順は[ローカルPostgreSQL](local-postgresql.md#テーブルmigration)を参照する。旧案のmigrationsディレクトリは参照しない。1ファイルに `-- +goose Up` と `-- +goose Down` を記述し、適用・適用状況の管理をツールへ任せる。Goでスキーマ変更を書く方式やORMの自動migrationは今回の採用に含めない。
+
+sqlcはGoのDBアクセスコードを生成し、gooseは実DBへSQLを適用する。sqlcはgoose形式のmigrationを読み、Down側を無視できる。役割を分け、API起動時にはmigrationを実行せず、通常APIとは別の管理用DB権限で明示実行する。旧AI案の独自psqlによる版管理を採用・完成させる決定ではない。
+
+golang-migrateもSQLベースの代替候補として比較したが、Up/Downを同じファイルで確認でき、sqlcも形式を読めるgooseを採用した。代わりにgoose固有のコメント形式を覚え、ツールの版を管理する必要がある。Downは削除したデータの復元を保証せず、特に初期テーブルの削除は認証データを失うため通常操作にはしない。接続設定の安全な渡し方、権限、transaction・並行実行制御、失敗後の復旧、版固定は導入前に検証する。CLIはv3.29.0を固定し、専用ロールと秘密ファイルで実行する。未検証の範囲を含む実行結果はIssueへ記録する。
+
+一次情報：[gooseのSQL形式](https://pressly.github.io/goose/documentation/annotations/)、[CLI](https://pressly.github.io/goose/documentation/cli-commands/)、[sqlcのmigration対応](https://docs.sqlc.dev/en/stable/howto/ddl.html)、[golang-migrate](https://github.com/golang-migrate/migrate)。
+
+
+### Node.jsの開発用バージョンとnpm依存の管理
+
+利用者からNodeの脆弱性を懸念する意向があり、開発用Nodeは26.13.0 LTSをasdfで導入し、ルートの `.tool-versions` で固定する。Viteを採用する方針は維持する。npm依存の具体的な構成と以下の運用方針は、依存導入時に確認する提案として区別する。
+
+- Vue・Vite・PrimeVue等の依存を導入する際に、採用する版とNode 26.13.0の互換性を確認する。旧AI案のNode 22固定条件を自動採用しない。
+- バージョン固定は更新を止める目的ではない。Node公式のセキュリティ情報とサポート期間を確認し、修正版が出たら影響確認・ビルド・テストを行って更新する。特定の版に脆弱性がないことを保証しない。
+- Node本体とnpm依存を分けて確認する。npm依存はlockfileに従う `make frontend-install` で再現性を確保し、開発用を含めた `make frontend-audit` と依存の変更内容を確認する。auditはNode本体の修正状況や未知の問題・悪意あるパッケージがないことを証明するものではない。自動の強制更新を安全性確認の代替にしない。
+- Node/Viteは開発・ビルドに使う。本番はViteで作った静的ファイルをnginxで配信し、APIはGoで動かす既存方針を維持する。NodeのHTTPサーバーやVite開発サーバーを本番公開しない。開発・依存取得・ビルド中のリスクは残るので、不要な依存を増やさず、本番の秘密をFrontendへ渡さない。
+
+一次情報：[Nodeのサポート状況](https://nodejs.org/en/about/previous-releases)、[Node 26.13.0 LTS](https://nodejs.org/en/blog/release/v26.13.0)、[2026年10月のセキュリティ修正](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases)、[npm audit](https://docs.npmjs.com/cli/v11/commands/npm-audit/)、[Viteの本番ビルド](https://vite.dev/guide/build.html)。採用依存の監査・互換性試験は依存導入時に行う。
 
 ## ブラウザ側のデータ取得
 
@@ -91,3 +125,5 @@ CRUDなど状態を変更する処理は、重複変更を避けるため無条�
 - [#7 生成ジョブの失敗時動作・ログ・再実行](https://github.com/smofktn/watchbrief/issues/7)
 - [#9 WatchBriefのアプリ構想](https://github.com/smofktn/watchbrief/issues/9)
 - [#11 EC2 1台構成のインフラ・運用](https://github.com/smofktn/watchbrief/issues/11)
+
+User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](../backend/README.md#sqlcとuser保存の準備)を参照する。端末入力用x/term v0.47.0・ULID v2.1.2を管理コマンドで使用する。現在の手順は[架空User作成](../backend/README.md#架空userの作成)を参照する。
