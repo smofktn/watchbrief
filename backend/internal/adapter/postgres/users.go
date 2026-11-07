@@ -62,3 +62,10 @@ func (s *UserStore) LoginIDBySessionHash(ctx context.Context, digest [32]byte) (
 	}
 	return loginID, nil
 }
+
+func (s *UserStore) DeleteSessionByHash(ctx context.Context, digest [32]byte) error {
+	if err := s.queries.DeleteSessionByHash(ctx, digest[:]); err != nil {
+		return domain.ErrSessionStore
+	}
+	return nil
+}

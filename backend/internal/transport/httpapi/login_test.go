@@ -18,7 +18,7 @@ func (unavailableLogin) Execute(context.Context, string, string) ([32]byte, erro
 func TestInputBoundary(t *testing.T) {
 	const origin = "http://127.0.0.1:5173"
 	const valid = `{"login_id":"Fictional_User","password":"example-only-password"}`
-	h, err := NewHandler(origin, unavailableLogin{}, &currentResult{}, nil)
+	h, err := NewHandler(origin, unavailableLogin{}, &currentResult{}, &logoutResult{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestInputBoundary(t *testing.T) {
 
 func TestRejectInvalidOriginConfiguration(t *testing.T) {
 	for _, value := range []string{"", "null", "file://localhost", "http://user:password@localhost", "http://localhost/path", "http://localhost?x=1"} {
-		if _, err := NewHandler(value, unavailableLogin{}, &currentResult{}, nil); err == nil {
+		if _, err := NewHandler(value, unavailableLogin{}, &currentResult{}, &logoutResult{}, nil); err == nil {
 			t.Fatal("accepted invalid origin configuration")
 		}
 	}

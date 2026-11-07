@@ -65,17 +65,17 @@ make db-migration-status
 
 CLIはgoose v3.29.0。インストーラーはLinux amd64の公式バイナリを公式リリースのSHA-256と照合し、Git対象外の `.local/bin/goose` へ置く。既存バイナリが異なれば上書きしない。Go・Nodeは引き続きasdfで管理する。
 
-現在のmigrationは `backend/db/goose/000001_create_auth.sql`。旧案の `backend/db/migrations/` は読み込まない。Up/Downを同じSQLに置き、gooseの通常のトランザクションで適用する。独自のDB版管理は作らず、適用状態は `app.goose_db_version` へ保存する。
+現在のmigrationは `backend/db/goose/000001_create_auth.sql` と `000002_logout_session.sql`。旧案の `backend/db/migrations/` は読み込まない。Up/Downを同じSQLに置き、gooseの通常のトランザクションで適用する。独自のDB版管理は作らず、適用状態は `app.goose_db_version` へ保存する。
 
 接続パスワードは既存のmigration用秘密ファイルから読み、600の一時passfileでCLIへ渡す。パスワードを引数へ入れず、ローカル固定の接続先だけを使う。継承したPG/GOOSE設定と自動.env読込を無効化する。完了・失敗時は一時ファイルを除去し、DB接続エラーの詳細は出力しない。このラッパー経由の同時実行はローカルfile lockで拒否する。別ホストやCLI直接実行の並行制御を保証するものではない。
 
 | 対象 | API用 | User作成用 |
 |---|---|---|
 | `app.users` | SELECT | INSERT |
-| `app.auth_sessions` | SELECT・INSERT | 権限なし |
+| `app.auth_sessions` | SELECT・INSERT・DELETE | 権限なし |
 | `app.goose_db_version` | 権限なし | 権限なし |
 
-Userの更新・削除、セッションの更新・削除は付与しない。ログアウト等の後続Issueで必要な変更を追加する。テーブル所有者はmigration用であり、API/User作成用は所有者へ切り替えられない。
+Userの更新・削除とセッションの更新は付与しない。ログアウトに必要なセッションDELETEだけを版2で追加する。テーブル所有者はmigration用であり、API/User作成用は所有者へ切り替えられない。
 
 ```bash
 make db-verify
@@ -83,7 +83,11 @@ make db-verify
 
 専用ローカルDBで、架空データを各トランザクション内へ入れて制約・許可/拒否を検証し、ロールバックする。実際のパスワードハッシュ・生トークンは使わず、レスポンスや行データも出力しない。これはアプリの認証試験の代わりではない。
 
-通常ラッパーは `up`・`status`・`version` だけを公開する。Downは認証データを削除するため、通常操作や確認手順に含めない。失敗時にreset・volume削除・版管理行の手編集を行わず、失敗した版とDB状態を確認する。Downは削除したデータを復元しない。
+通常ラッパーは `up`・`status`・`version` だけを公開する。版1のDownは認証データを削除し、版2のDownはDELETE権限を取り消す。通常操作や確認手順にDownは含めない。失敗時にreset・volume削除・版管理行の手編集を行わず、失敗した版とDB状態を確認する。Downは削除したデータを復元しない。
+
+## ログアウト用の権限追加（Issue #54）
+
+`make db-migrate` で版2を適用する。変更は `watchbrief_api` へのauth_sessions DELETE権限追加だけで、既存行は削除・更新しない。API起動へmigrationを混ぜない。`make db-verify` は更新後の権限も検証し、試験データはロールバックする。[保存処理と権限の詳細](database-design.md#issue-54のログアウト保存処理)を参照する。
 
 ## 停止と再開
 

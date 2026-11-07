@@ -23,7 +23,7 @@ type loginResult struct {
 func TestInternalFailureLogsAreSanitized(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))
-	h, err := NewHandler("http://127.0.0.1:5173", &loginResult{err: errors.New("synthetic-private-marker")}, &currentResult{}, logger)
+	h, err := NewHandler("http://127.0.0.1:5173", &loginResult{err: errors.New("synthetic-private-marker")}, &currentResult{}, &logoutResult{}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestCookieIssuedOnlyForSuccess(t *testing.T) {
 	for _, origin := range []string{"http://127.0.0.1:5173", "https://watchbrief.example"} {
 		for _, failure := range []error{nil, usecase.ErrInvalidCredentials, usecase.ErrLogin} {
 			service := &loginResult{err: failure}
-			h, err := NewHandler(origin, service, &currentResult{}, nil)
+			h, err := NewHandler(origin, service, &currentResult{}, &logoutResult{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,7 +90,7 @@ func TestCookieIssuedOnlyForSuccess(t *testing.T) {
 
 func TestOriginCheckedBeforeAuthentication(t *testing.T) {
 	service := &loginResult{}
-	h, _ := NewHandler("http://127.0.0.1:5173", service, &currentResult{}, nil)
+	h, _ := NewHandler("http://127.0.0.1:5173", service, &currentResult{}, &logoutResult{}, nil)
 	for _, origins := range [][]string{nil, {"null"}, {"http://other.invalid"}, {"http://127.0.0.1:5173", "http://127.0.0.1:5173"}} {
 		r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{}`))
 		for _, v := range origins {
@@ -102,7 +102,7 @@ func TestOriginCheckedBeforeAuthentication(t *testing.T) {
 			t.Fatal("invalid Origin reached authentication")
 		}
 	}
-	if _, err := NewHandler("http://watchbrief.example", service, &currentResult{}, nil); err == nil {
+	if _, err := NewHandler("http://watchbrief.example", service, &currentResult{}, &logoutResult{}, nil); err == nil {
 		t.Fatal("non-loopback HTTP accepted")
 	}
 }

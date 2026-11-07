@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
@@ -10,15 +10,23 @@ const message = ref('')
 const submitting = ref(false)
 const inputError = ref('')
 const currentLoginId = ref('')
-const state = ref<'checking' | 'anonymous' | 'authenticated' | 'error'>('checking')
+const state = ref<'checking' | 'anonymous' | 'authenticated' | 'error' | 'logging-out' | 'logout-error'>('checking')
+const logoutStatus = ref<HTMLElement | null>(null)
+const loginTitle = ref<HTMLElement | null>(null)
+let currentUserRequest = 0
 
 const loadCurrentUser = async () => {
+  const requestId = ++currentUserRequest
   state.value = 'checking'
   currentLoginId.value = ''
   message.value = ''
   try {
     const response = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
     const body: unknown = await response.json().catch(() => null)
+    // A late identity response must not restore data after logout starts.
+    if (requestId !== currentUserRequest) {
+      return
+    }
     if (response.status === 401 && typeof body === 'object' && body !== null
       && 'error' in body && typeof body.error === 'object' && body.error !== null
       && 'code' in body.error && body.error.code === 'unauthenticated') {
@@ -34,6 +42,9 @@ const loadCurrentUser = async () => {
     }
     message.value = '処理に失敗しました。時間をおいて再度お試しください'
   } catch {
+    if (requestId !== currentUserRequest) {
+      return
+    }
     message.value = '接続できません。再度お試しください'
   }
   state.value = 'error'
@@ -42,7 +53,7 @@ const loadCurrentUser = async () => {
 onMounted(loadCurrentUser)
 
 const submit = async () => {
-  if (submitting.value) {
+  if (submitting.value || state.value !== 'anonymous') {
     return
   }
   submitting.value = true
@@ -80,6 +91,44 @@ const submit = async () => {
     submitting.value = false
   }
 }
+
+const logout = async () => {
+  if (state.value !== 'authenticated' && state.value !== 'logout-error') {
+    return
+  }
+  ++currentUserRequest
+  currentLoginId.value = ''
+  loginId.value = ''
+  password.value = ''
+  inputError.value = ''
+  message.value = ''
+  state.value = 'logging-out'
+  await nextTick()
+  logoutStatus.value?.focus()
+
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 15_000)
+  try {
+    const response = await fetch('/api/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    // Only a confirmed 204 completes logout. Do not reload identity on failure.
+    state.value = response.status === 204 ? 'anonymous' : 'logout-error'
+  } catch {
+    state.value = 'logout-error'
+  } finally {
+    window.clearTimeout(timeout)
+    await nextTick()
+    if (state.value === 'anonymous') {
+      loginTitle.value?.focus()
+    } else {
+      logoutStatus.value?.focus()
+    }
+  }
+}
 </script>
 
 <template>
@@ -91,13 +140,21 @@ const submit = async () => {
         <section v-else-if="state === 'authenticated'" aria-labelledby="current-user-title">
           <h2 id="current-user-title">本人情報</h2>
           <p>ログインID：<span>{{ currentLoginId }}</span></p>
+          <Button label="ログアウト" @click="logout" />
+        </section>
+        <section v-else-if="state === 'logging-out'" aria-busy="true">
+          <p ref="logoutStatus" tabindex="-1" role="status">ログアウトしています。</p>
+        </section>
+        <section v-else-if="state === 'logout-error'">
+          <p ref="logoutStatus" tabindex="-1" role="alert">ログアウトを確認できません。再試行してください。</p>
+          <Button label="再試行" @click="logout" />
         </section>
         <section v-else-if="state === 'error'">
           <p role="alert">{{ message }}</p>
           <Button label="再試行" @click="loadCurrentUser" />
         </section>
         <template v-else>
-        <h2>ログイン</h2>
+        <h2 ref="loginTitle" tabindex="-1">ログイン</h2>
         <p id="login-note">ログインIDとパスワードを入力してください。</p>
         <form aria-describedby="login-note" @submit.prevent="submit">
           <div class="field">

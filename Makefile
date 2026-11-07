@@ -2,7 +2,7 @@ include make/common.mk
 
 FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-test-db backend-benchmark-password backend-check-input
-BACKEND_DIRECT := user-create verify-user-create verify-login-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+BACKEND_DIRECT := user-create verify-user-create verify-login-api verify-logout-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 .PHONY: help runtime-install runtime-versions build test check $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
 
@@ -21,6 +21,7 @@ help:
 	  '  make backend-test-db / db-verify    DB接続・制約・権限の試験' \
 	  '  make verify-user-create             PTY試験（検証User1件を保持）' \
 	  '  make verify-login-api               DBログイン試験（検証セッション2件を保持）' \
+	  '  make verify-logout-api              DBログアウト・旧トークン拒否・障害再試行の試験' \
 	  '  make backend-benchmark-password / backend-check-input' \
 	  '  make backend-fmt                    現在のGoコードを整形' \
 	  '  make frontend-typecheck / frontend-preview / frontend-audit' \

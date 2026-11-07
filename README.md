@@ -27,7 +27,7 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-Vue・TypeScript・Vite・PrimeVueによる表示確認用の最小画面があります。[Frontendの起動手順](frontend/README.md)で確認できます。[Go API](backend/README.md)は準備済みのローカルDBへ接続して起動します。画面からVite経由でAPIへ入力を送信できます。[現在の管理コマンド](backend/README.md#架空userの作成)で架空UserをDBへ追加できます。ログイン認証・セッション保存・Cookie発行は接続済み。Cookieから本人情報を取得し、ログインIDを表示できます。画面を再読み込みしてもCookieで再認証します。
+Vue・TypeScript・Vite・PrimeVueによる表示確認用の最小画面があります。[Frontendの起動手順](frontend/README.md)で確認できます。[Go API](backend/README.md)は準備済みのローカルDBへ接続して起動します。画面からVite経由でAPIへ入力を送信できます。[現在の管理コマンド](backend/README.md#架空userの作成)で架空UserをDBへ追加できます。ログイン認証・セッション保存・Cookie発行は接続済み。Cookieから本人情報を取得し、ログインIDを表示できます。画面を再読み込みしてもCookieで再認証します。 [ログアウトAPI](docs/API仕様/post-api-logout.md)は、対象セッションの削除・旧トークン拒否まで実装しています。本人情報画面のボタンから直接ログアウトでき、開始時に本人情報を消して、成功時はログインフォーム、失敗時は再試行を表示します。
 
 架空Userの管理コマンド、Vueログイン画面、Goのログイン・本人情報API、認証DB migrationの既存AI案があります。旧案は現在の実装と区別します。現在は架空User作成からログイン・本人情報表示までの最小経路を実装しています。[過去のAI担当による検証記録と制限](docs/verification-issue-53.md)を確認してください。
 
