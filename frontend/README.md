@@ -31,13 +31,13 @@ Vueの型検査後に `dist/` へ生成する。TypeScriptはVue型検査ツー�
 
 `/me` は保護画面、`/login` はログイン画面。本人情報APIの401を確認してからログインへ移り、成功後は `return_to` の許可済み保護パスへ戻る。外部・未知・不正・重複の戻り先は採用せず、`/me` を既定とする。現在は `/me`・`/collections`・`/reports` と設定・ReportのULID詳細パスを許可し、任意クエリ・フラグメントは扱わない。[画面仕様](../docs/画面仕様/保護URLとログイン復帰.md)と対応する。
 
-ルートの許可一覧と純粋な検証関数は `src/navigation.ts`。後続画面を追加するときだけ、その画面・所有者確認・試験と同時に一覧を拡張する。追加のRouter依存は使わずHistory APIで現在の履歴を置換する。再読込時のHTML配信はViteのSPA fallbackを使い、本番nginxの設定は #21で検証する。
+ルートの許可一覧と純粋な検証関数は `src/navigation.ts`。後続画面を追加するときだけ、その画面・所有者確認・試験と同時に一覧を拡張する。Vue RouterのWeb Historyを使い、認証遷移はrouter.replaceで現在の履歴を置換する。再読込時のHTML配信はViteのSPA fallbackを使い、本番nginxの設定は #21で検証する。
 
 ```bash
 make test
 ```
 
-Nodeの組み込みテストで、既知パス・外部URL・符号化・逆スラッシュ・重複・login/APIへの戻り先を確認する。ルートでは `make frontend-test`、`make check` でも実行する。ブラウザではCookieのない新しいプロファイルで `/me` を直接開き、ログインURL・認証成功後の `/me`・再読込を確認する。500や通信障害では未認証と断定せず再試行できること、不正な `return_to` で外部へ移らないこと、ログアウト失敗後に履歴移動しても本人情報が戻らないことも確認する。秘密値をURLや公開記録へ書かない。
+Vitestで、既知パス・外部URL・符号化・逆スラッシュ・重複・login/APIへの戻り先に加え、Vue Test Utilsと実Routerのmemory historyで画面操作・API失敗・遅い応答・ログアウトを確認する。ルートでは `make frontend-test`、`make check` でも実行する。ブラウザではCookieのない新しいプロファイルで `/me` を直接開き、ログインURL・認証成功後の `/me`・再読込を確認する。500や通信障害では未認証と断定せず再試行できること、不正な `return_to` で外部へ移らないこと、ログアウト失敗後に履歴移動しても本人情報が戻らないことも確認する。秘密値をURLや公開記録へ書かない。
 
 ## ログアウト（Issue #54）
 
@@ -59,3 +59,29 @@ Backend側でmigrationと `make seed-collections LOGIN_ID=fictional_user` を実
 0件・Scheduleなし・対象/情報源なし、404、取得失敗と「設定を再試行」を区別する。別Userの詳細IDを直接開いても「見つかりません。」とし、情報を表示しない。ログアウト開始時に設定を即座に消し、遅い設定応答や履歴操作で復活しないことも確認する。URL・本文をHTMLとして挿入せず、外部取得や編集操作は行わない。
 
 保存済みReportは `/reports` の最小一覧と `/reports/{ULID}` の詳細で取得する。本文はHTML挿入せずテキスト表示し、再試行・401/404・ログアウト中の消去は[画面仕様](../docs/画面仕様/保存済みReportの取得.md)に従う。
+
+## Frontendの責務とテスト（Issue #68）
+
+`src/App.vue` はRouterに接続してsessionを一度だけ生成・provideし、`layouts/AppLayout.vue` を組み立てる。各ページ・featureはinjectで同じsessionを参照する。認証情報を別々に保持するstoreや永続ストレージは追加しない。
+
+| 配置 | 責務 |
+|---|---|
+| `router.ts` / `navigation.ts` | ページと履歴の管理 / 安全な保護パスと戻り先の許可一覧 |
+| `layouts/` / `pages/` | 共通枠・認証状態・フォーカス / URL単位の表示の接続 |
+| `features/auth/` | ログインフォーム、共有session、認証APIと応答検証 |
+| `features/collections/` / `features/reports/` | 各表示、取得接続、API、型と応答guard |
+| `composables/useResource.ts` | 読み込み・再試行・timeout・消去と遅延応答破棄 |
+| `components/` / `api.ts` | 共通のエラー表示 / 同一Origin・no-store通信とJSON読取り |
+
+認証の変更はsessionの操作に集約する。resource側は401 unauthenticatedを確認した場合だけ、世代付きのexpire通知をsessionへ送る。route変更・ログアウト・unmountでは表示を消し、前の世代の応答を採用しない。内部redirectだけを識別し、同時に起きた利用者の遷移も処理する。ログアウト失敗中は履歴・BFCacheによる再認証を止め、ログアウトの再試行だけを許可する。
+
+```bash
+make test
+make coverage
+```
+
+ルートの `make frontend-test` / `make frontend-coverage` も同じ入口。通常の `make check` に画面テストを含む。`coverage/` にHTMLとJSON summaryを出力し、Git対象外とする。V8 coverageのincludeは `src/**/*.{ts,vue}` で、入口・画面・composable・API・guardの現用コード全体を分母に含む。旧不採用のJavaScript案は現entryから参照されず対象外で、`test:legacy` と区別する。coverageはDOM環境内の実行率であり、実ブラウザ・Cookie・DB・HTTPサーバーを接続した確認の代用にはしない。coverage向上だけを目的としたsnapshotや内部関数の呼出しでなく、正常・失敗・競合時の表示と操作を確かめる。
+
+[Vueのテスト指針](https://vuejs.org/guide/scaling-up/testing.html)に沿ってVitestとVue Test Utilsを採用し、[実Routerの試験](https://test-utils.vuejs.org/guide/advanced/vue-router)と[V8 coverage](https://vitest.dev/guide/coverage.html)を使用する。Node 26・Vue 3.5・Vite 8とのpeer互換を確認してexact pinする。Router 5.4.0、Vitest/coverage-v8 5.1.0、jsdom 31.0.0、Vue Test Utils 2.5.1を採用。これらはMITで、テスト依存は配布bundleへ含めない。インストール時のscriptsは引き続き無効にする。
+
+テスト用間接依存の監査には既知のmoderate指摘が残る。`js-beautify` のCLIが利用するglob/editorconfig/minimatchに、[AbortSignal後の探索](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)と[globpartsによる負荷増大](https://github.com/advisories/GHSA-g3hv-75wg-m249)がある。現テストは固定の架空データを使い、このCLIや任意ファイル探索を呼び出さない。これらのテスト依存はアプリからimportせず、本番bundleへ含めない。上流の依存制約内では解消できず、動作互換を保証できないmajor overrideは加えない。依存更新時に開発用も含めて再監査する。本番依存の監査と開発依存の指摘は区別して記録する。

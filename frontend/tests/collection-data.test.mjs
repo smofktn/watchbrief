@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
-import { isCollection, isCollectionSummary } from '../src/collection-data.ts'
+import { test } from 'vitest'
+import { isCollection, isCollectionSummary } from '../src/features/collections/data.ts'
 import { collectionIDFromPath, loginDestination, safeReturnPath } from '../src/navigation.ts'
 
 const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'

@@ -81,7 +81,10 @@ make user-create LOGIN_ID=fictional_user
 |---|---|---|---|
 | 起動 | `make frontend-dev` / `make backend-dev` | `make dev` | `make dev` |
 | ビルド | `make build` | `make build` | `make build` |
-| 試験・型検査 | `make check` | `make typecheck` | `make test` |
+| 試験・型検査 | `make check` | `make test` / `make typecheck` | `make test` |
+| Backend coverage | `make backend-coverage` | — | `make coverage` |
+| 両側のcoverage | `make coverage` | — | — |
+| Frontend coverage | `make frontend-coverage` | `make coverage` | — |
 | DB起動・状況確認 | `make db-up` / `make db-status` | — | 同名ターゲット |
 | migration | `make db-migrate` | — | `make db-migrate` |
 | User追加 | `make user-create LOGIN_ID=fictional_user` | — | 同名ターゲット |

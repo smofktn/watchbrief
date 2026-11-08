@@ -57,3 +57,27 @@ func TestResetPasswordValidationAndFailures(t *testing.T) {
 		t.Fatal("cancelled reset performed work")
 	}
 }
+
+func TestResetPasswordMissingDependenciesAndInvalidConfirmation(t *testing.T) {
+	for _, missing := range []string{"store", "hasher", "confirmation"} {
+		t.Run(missing, func(t *testing.T) {
+			s := &resetterFake{}
+			h := &fakeHasher{}
+			uc := ResetPassword{Store: s, Hasher: h}
+			confirmation := "example-only-password"
+			want := ErrResetPassword
+			switch missing {
+			case "store":
+				uc.Store = nil
+			case "hasher":
+				uc.Hasher = nil
+			case "confirmation":
+				confirmation = "short"
+				want = domain.ErrInvalidCredentialsInput
+			}
+			if err := uc.Execute(context.Background(), "user", "example-only-password", confirmation); err != want || s.calls != 0 || len(h.inputs) != 0 {
+				t.Fatal("invalid reset reached hashing/persistence")
+			}
+		})
+	}
+}

@@ -78,3 +78,30 @@ func TestCreateUserPreservesDuplicateClassification(t *testing.T) {
 		t.Fatal("lost duplicate classification")
 	}
 }
+
+func TestCreateUserMissingDependenciesAndInvalidConfirmation(t *testing.T) {
+	for _, missing := range []string{"store", "hasher", "ID", "confirmation"} {
+		t.Run(missing, func(t *testing.T) {
+			s := &fakeWriter{}
+			h := &fakeHasher{}
+			ids := 0
+			uc := CreateUser{Store: s, Hasher: h, NewID: func() (string, error) { ids++; return "id", nil }}
+			confirmation := "example-only-password"
+			want := ErrCreateUser
+			switch missing {
+			case "store":
+				uc.Store = nil
+			case "hasher":
+				uc.Hasher = nil
+			case "ID":
+				uc.NewID = nil
+			case "confirmation":
+				confirmation = "short"
+				want = domain.ErrInvalidCredentialsInput
+			}
+			if err := uc.Execute(context.Background(), "user", "example-only-password", confirmation); err != want || len(s.users) != 0 || len(h.inputs) != 0 || ids != 0 {
+				t.Fatal("invalid request reached preparation/persistence")
+			}
+		})
+	}
+}
