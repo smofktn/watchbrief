@@ -1,0 +1,5 @@
+{
+  "source": "Independent libargon2 reference implementation, argon2id_hash_encoded; synthetic public test vector",
+  "password": "reference-only-password",
+  "encoded": "$argon2id$v=19$m=65536,t=3,p=4$AAECAwQFBgcICQoLDA0ODw$cawOAvf2rgZ0DVV2dwVrejUJi9fWMMq/CmXyFwluXTg"
+}

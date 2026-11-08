@@ -1,0 +1,10 @@
+:root { font-family: system-ui, sans-serif; color: #172c3b; background: #f4f7f8; }
+body { margin: 0; }
+main { max-width: 32rem; margin: 4rem auto; padding: 2rem; background: white; border-radius: .6rem; }
+h1 { color: #1c5662; }
+label { display: grid; gap: .4rem; margin: 1rem 0; }
+input, button { font: inherit; padding: .7rem; border: 1px solid #617985; border-radius: .3rem; }
+button { background: #1c5662; color: white; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+[role=alert] { color: #9a2034; }
+@media (max-width: 40rem) { main { margin: 1rem; padding: 1.2rem; } }

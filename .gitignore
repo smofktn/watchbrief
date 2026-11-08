@@ -2,6 +2,8 @@
 *.log
 *.tmp
 .cache/
+__pycache__/
+*.py[cod]
 
 # Environment variables and secrets
 .env
@@ -17,3 +19,10 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Application build, dependencies and local database/configuration
+node_modules/
+dist/
+bin/
+.local/
+coverage/

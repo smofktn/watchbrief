@@ -4,9 +4,6 @@ WatchBriefは、気になる企業・人物・AI・技術などの公開情報�
 
 情報を集めるだけでなく、出典を残し、「現在の状態」「更新・新着情報」「AIによる整理」を分けて読める状態を目指します。
 
-> [!IMPORTANT]
-> 現在は仕様・論理設計段階です。利用できるアプリケーションはまだ実装されていません。
-
 ## 何のためのものか
 
 WatchBriefは、継続して追いかけたい公開情報をコレクションごとにまとめる仕組みです。設定したスケジュールで非同期に調査し、保存済みレポートを認証付きWeb画面から日付別・コレクション別に閲覧します。
@@ -27,14 +24,18 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-まだ利用できるアプリケーションはありません。このリポジトリには、現時点ではプロダクト仕様、システム設計、論理データ設計、開発・運用ルールを置いています。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。設定とReportは読み取り専用で、Report本文はテキスト表示です。
 
-初期構成はEC2 1台にnginx・アプリ・PostgreSQLを同居させ、Ubuntu Server LTSとsystemdを使い、手動でデプロイする方針です。最小骨格にはVue・Goを使います。具体バージョン、ORM、Job queueなどは未決定です。配置・運用の合意事項と設計案は[システム設計](docs/system-design.md)にまとめています。
+最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
+
+設定編集・本格的な閲覧は #18、Scheduler・Workerによる生成は #19、外部接続は #20、AWS配備は #21、ログイン試行制限・認証専用記録は #49の後続作業です。現在の架空seedは生成処理ではありません。旧AI案の文書は参考として区別し、現在の契約は[画面仕様](docs/画面仕様/README.md)・[API仕様](docs/API仕様/README.md)を参照します。
 
 ## ドキュメント
 
 - [ドキュメント一覧](docs/README.md)
 - [プロダクト仕様](docs/product-definition.md)
+- [画面仕様](docs/画面仕様/README.md)
+- [API仕様](docs/API仕様/README.md)
 - [システム設計](docs/system-design.md)
 - [ドメインモデル](docs/domain-model.md)
 - [DB設計・ER図](docs/database-design.md)
@@ -49,13 +50,51 @@ MVPでは、次の使い方を想定しています。
 
 ## ローカルで見る
 
-現時点ではビルドや実行の手順はありません。ファイルを確認するだけなら、通常のGit cloneで取得できます。
+[新規環境の起動・確認手順](docs/verification-issue-17.md)を入口に、[Frontend](frontend/README.md)・[Backend](backend/README.md)・[ローカルPostgreSQL](docs/local-postgresql.md)で詳細を確認できます。旧AI案の `docs/local-development.md` は現在の起動手順として使いません。
 
 ```bash
 git clone https://github.com/smofktn/watchbrief.git
 cd watchbrief
 ```
 
+## 開発コマンド
+
+リポジトリルートで `make help` を実行すると一覧を確認できます。Frontend・Backend内でも `make help` が使えます。DB操作はBackendのMakefileが担当し、ルートから同名ターゲットへ委譲します。
+
+```bash
+make frontend-dev
+```
+
+別の端末でAPIを起動します。
+
+```bash
+make backend-dev
+```
+
+架空Userを追加する場合は、DBの初期設定・migration後に実行します。パスワードは端末で2回非表示入力します。
+
+```bash
+make user-create LOGIN_ID=fictional_user
+```
+
+| 操作 | ルート | Frontend内 | Backend内 |
+|---|---|---|---|
+| 起動 | `make frontend-dev` / `make backend-dev` | `make dev` | `make dev` |
+| ビルド | `make build` | `make build` | `make build` |
+| 試験・型検査 | `make check` | `make test` / `make typecheck` | `make test` |
+| Backend coverage | `make backend-coverage` | — | `make coverage` |
+| 両側のcoverage | `make coverage` | — | — |
+| Frontend coverage | `make frontend-coverage` | `make coverage` | — |
+| DB起動・状況確認 | `make db-up` / `make db-status` | — | 同名ターゲット |
+| migration | `make db-migrate` | — | `make db-migrate` |
+| User追加 | `make user-create LOGIN_ID=fictional_user` | — | 同名ターゲット |
+
+依存導入は `make frontend-install`、goose/sqlc導入は `make tools-install`、asdfでのGo/Node導入は `make runtime-install` を使います。初回のDB準備と各試験の前提は[ローカルPostgreSQL](docs/local-postgresql.md)・[Backend](backend/README.md)を参照してください。初期設定やmigrationは通常起動へ自動追加しません。
+
 ## 開発について
 
 実装上の注意、運用保守ルール、未決定事項の扱いは[開発・運用ルール](CONTRIBUTING.md)を参照してください。
+
+保存済みReportの最小経路は `make db-migrate` → `make seed-reports LOGIN_ID=fictional_user` → ログイン → `/reports`。架空Userを先に作成する。`make verify-reports-api` の前提・保持する架空データ・制限は[Backend手順](backend/README.md#架空の保存済みreport)、契約は[Report API](docs/API仕様/get-api-reports.md)と[画面仕様](docs/画面仕様/保存済みReportの取得.md)を参照する。
+
+パスワード再設定は `make password-reset LOGIN_ID=fictional_user` で行います。初期設定・既存DBへの専用ロール追加と試験は[再設定の詳細](docs/password-reset.md)を参照してください。
