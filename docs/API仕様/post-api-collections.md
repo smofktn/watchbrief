@@ -8,7 +8,7 @@ Collection本体から新規保存を通す範囲と、同じ要求の再試行�
 
 ## 要求
 
-`Content-Type: application/json` と、1つの `Idempotency-Key` ヘッダーを必須とする。要求番号はブラウザのcrypto.randomUUID()による小文字UUID v4で、同じ入力の再試行では同じ値を使う。これは作成操作の識別値で、エンティティIDや認証情報ではない。保存するCollectionのIDはAPI側でULIDを生成する。
+`Content-Type: application/json` と、1つの `Idempotency-Key` ヘッダーを必須とする。要求番号はブラウザの[crypto.randomUUID()](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID)による小文字UUID v4で、同じ入力の再試行では同じ値を使う。これは作成操作の識別値で、エンティティIDや認証情報ではない。保存するCollectionのIDはAPI側でULIDを生成する。
 
 本文は次の4項目を必須とする。「任意」の調査方針は空文字で送る。
 

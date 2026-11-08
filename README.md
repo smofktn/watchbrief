@@ -24,11 +24,11 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。設定とReportは読み取り専用で、Report本文はテキスト表示です。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
 
 最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
-設定編集・本格的な閲覧は #18、Scheduler・Workerによる生成は #19、外部接続は #20、AWS配備は #21、ログイン試行制限・認証専用記録は #49の後続作業です。現在の架空seedは生成処理ではありません。旧AI案の文書は参考として区別し、現在の契約は[画面仕様](docs/画面仕様/README.md)・[API仕様](docs/API仕様/README.md)を参照します。
+設定編集の残りと本格的な閲覧は #18、Scheduler・Workerによる生成は #19、外部接続は #20、AWS配備は #21、ログイン試行制限・認証専用記録は #49の後続作業です。現在の架空seedは生成処理ではありません。旧AI案の文書は参考として区別し、現在の契約は[画面仕様](docs/画面仕様/README.md)・[API仕様](docs/API仕様/README.md)を参照します。
 
 ## ドキュメント
 
@@ -100,3 +100,5 @@ main向けPRではGitHub Actionsが既存の `make check`・`make build` を自�
 保存済みReportの最小経路は `make db-migrate` → `make seed-reports LOGIN_ID=fictional_user` → ログイン → `/reports`。架空Userを先に作成する。`make verify-reports-api` の前提・保持する架空データ・制限は[Backend手順](backend/README.md#架空の保存済みreport)、契約は[Report API](docs/API仕様/get-api-reports.md)と[画面仕様](docs/画面仕様/保存済みReportの取得.md)を参照する。
 
 パスワード再設定は `make password-reset LOGIN_ID=fictional_user` で行います。初期設定・既存DBへの専用ロール追加と試験は[再設定の詳細](docs/password-reset.md)を参照してください。
+
+Collection本体の新規作成は一覧の「新規作成」から操作します。事前に版9の明示migrationが必要です。通常DBを停止しない追加検証は `make verify-collection-creation`。範囲と制限は[Backend手順](backend/README.md#collection本体の新規保存issue-18)を参照してください。

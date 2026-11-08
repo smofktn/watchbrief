@@ -11,6 +11,7 @@ import runpy
 import secrets
 import shutil
 import socket
+import sys
 import subprocess
 import tempfile
 import time
@@ -28,6 +29,9 @@ def free_port():
 
 
 def main():
+    creation = sys.argv[1:] == ['--collection-creation']
+    if sys.argv[1:] and not creation:
+        raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='watchbrief-issue17-') as directory:
         stage = Path(directory)
@@ -87,7 +91,8 @@ def main():
             script('bootstrap-postgres-roles.py')
             script('migrate-postgres.py', 'up')
             script('migrate-postgres.py', 'up')
-            assert sql('SELECT max(version_id) FROM app.goose_db_version WHERE is_applied') == '8'
+            expected_version = max(int(path.name.split('_')[0]) for path in (ROOT / 'backend/db/goose').glob('*.sql'))
+            assert sql('SELECT max(version_id) FROM app.goose_db_version WHERE is_applied') == str(expected_version)
             script('verify-postgres-schema.py')
             # Extend the normal constraint suite with DDL and role-management denials.
             for role in ('watchbrief_api', 'watchbrief_user_creator', 'watchbrief_password_resetter', 'watchbrief_migrator'):
@@ -138,7 +143,7 @@ def main():
                 responses = []
                 auth_marker = 'Bearer ' + secrets.token_urlsafe(24)
 
-                def request(path, token=None, data=None, supplied_origin=origin):
+                def request(path, token=None, data=None, supplied_origin=origin, extra_headers=None):
                     headers = {'Authorization': auth_marker}
                     if token:
                         headers['Cookie'] = 'watchbrief_session=' + token
@@ -146,6 +151,7 @@ def main():
                         headers['Origin'] = supplied_origin
                     if data is not None:
                         headers['Content-Type'] = 'application/json'
+                    headers.update(extra_headers or {})
                     req = urllib.request.Request(f'http://127.0.0.1:{api_port}' + path,
                                                  data=None if data is None else json.dumps(data).encode(), headers=headers)
                     try:
@@ -180,6 +186,8 @@ def main():
                 for path, data in (('/api/login', {'login_id': logins[0], 'password': passwords[0]}), ('/api/logout', {})):
                     for invalid_origin in (None, 'null', 'https://external.invalid'):
                         assert request(path, token, data, invalid_origin)[0] == 403
+                if creation:
+                    runpy.run_path(str(stage / 'scripts/verify-collection-creation.py'))['verify'](request, sql, token, other_token)
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
@@ -211,7 +219,7 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)]), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
                 output.flush()

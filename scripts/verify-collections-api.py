@@ -154,7 +154,7 @@ def main():
             for secret in [primary["password"], other["password"], empty["password"], *issued]:
                 assert secret not in output, "Private value in API logs"
             assert value["research_instruction"] not in output, "Settings text in API logs"
-            print("Settings SELECT-only grants, creator isolation, lookback/FK/unique/ULID constraints, rolled-back cascade and log privacy: passed")
+            print("Settings SELECT and DELETE denial grants, creator isolation, lookback/FK/unique/ULID constraints, rolled-back cascade and log privacy: passed")
         finally:
             for token in issued:
                 try:

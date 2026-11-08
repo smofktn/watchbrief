@@ -2,7 +2,7 @@ include make/common.mk
 
 FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test frontend-coverage frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-coverage backend-test-db backend-benchmark-password backend-check-input
-BACKEND_DIRECT := verify-issue17 password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+BACKEND_DIRECT := verify-collection-creation verify-issue17 password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 .PHONY: help runtime-install runtime-versions build test check coverage $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
 
@@ -13,6 +13,7 @@ help:
 	  '  make frontend-install              Frontend依存を導入' \
 	  '  make backend-deps                  Go依存を取得' \
 	  '  make build / test / check           両方のビルド / 両方の試験 / 試験と型検査' \
+	  '  make verify-collection-creation  使い捨てDBでCollection新規保存と再試行を検証' \
 	  '  make verify-issue17                使い捨てDBで新規構築・障害復旧・画面を検証' \
 	  '  make password-reset LOGIN_ID=fictional_user  非表示入力で再設定・全セッション失効' \
 	  '  make db-provision-password-resetter / verify-password-reset' \

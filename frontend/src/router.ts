@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouterHistory } from 'vue-router'
+import CollectionCreatePage from './pages/CollectionCreatePage.vue'
 import LoginPage from './pages/LoginPage.vue'
 import MePage from './pages/MePage.vue'
 import CollectionsPage from './pages/CollectionsPage.vue'
@@ -26,6 +27,7 @@ export const createAppRouter = (history: RouterHistory = createWebHistory()) => 
     { path: '/login', component: LoginPage },
     { path: '/me', component: MePage },
     { path: '/collections', component: CollectionsPage },
+    { path: '/collections/new', component: CollectionCreatePage },
     { path: '/collections/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: CollectionDetailPage },
     { path: '/reports', component: ReportsPage },
     { path: '/reports/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: ReportDetailPage },

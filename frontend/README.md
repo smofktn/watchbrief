@@ -85,3 +85,11 @@ make coverage
 [Vueのテスト指針](https://vuejs.org/guide/scaling-up/testing.html)に沿ってVitestとVue Test Utilsを採用し、[実Routerの試験](https://test-utils.vuejs.org/guide/advanced/vue-router)と[V8 coverage](https://vitest.dev/guide/coverage.html)を使用する。Node 26・Vue 3.5・Vite 8とのpeer互換を確認してexact pinする。Router 5.4.0、Vitest/coverage-v8 5.1.0、jsdom 31.0.0、Vue Test Utils 2.5.1を採用。これらはMITで、テスト依存は配布bundleへ含めない。インストール時のscriptsは引き続き無効にする。
 
 テスト用間接依存の監査には既知のmoderate指摘が残る。`js-beautify` のCLIが利用するglob/editorconfig/minimatchに、[AbortSignal後の探索](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)と[globpartsによる負荷増大](https://github.com/advisories/GHSA-g3hv-75wg-m249)がある。現テストは固定の架空データを使い、このCLIや任意ファイル探索を呼び出さない。これらのテスト依存はアプリからimportせず、本番bundleへ含めない。上流の依存制約内では解消できず、動作互換を保証できないmajor overrideは加えない。依存更新時に開発用も含めて再監査する。本番依存の監査と開発依存の指摘は区別して記録する。
+
+## Collection本体の新規作成（Issue #18）
+
+`/collections` の「新規作成」から `/collections/new` を開く。名前・任意の調査方針・初回期間を入力し、「保存」で停止中の本体を作る。保存後は既存詳細へ移り、一覧や再読み込みでも取得できる。対象・Schedule等の編集は後続範囲。
+
+新規ページは `pages/CollectionCreatePage.vue`、下書き・保存・要求番号・再試行・遅延応答破棄は `features/collections/useCollectionCreation.ts` が担当し、既存の単一sessionを共有する。結果不明時は同じ要求番号・同じ本文を再送するため、入力を保持して編集を止める。画面離脱・再読み込み後は一覧で確認し、下書きや番号を永続保存しない。[画面仕様](../docs/画面仕様/コレクションの新規作成.md)と[API](../docs/API仕様/post-api-collections.md)を参照する。
+
+`make test` は入力、保存成功、初回期間、400/401/403/409、500/不正成功/通信失敗後の同一要求再送、二重送信、ログアウトと遅延応答を確認する。実ブラウザ・実DBはルートの `make verify-collection-creation` で別に確認する。配下の編集やMarkdown表示まで完成したことを意味しない。
