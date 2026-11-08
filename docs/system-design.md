@@ -894,3 +894,11 @@ Vue Routerを採用し、URLごとのページと共通レイアウトを分け�
 sessionはAppで一度だけ生成してprovide/injectで共有し、resource featureが認証状態へ直接代入しない。APIの401 unauthenticatedは世代付きの通知でsessionに伝える。ログアウト開始前にresource消去を同期して行い、遅い本人情報・ログイン・取得応答が新しい画面やログアウト失敗状態を上書きしない。ログアウト204以外を完了とせず、失敗時には履歴・BFCacheからの本人情報再取得を止める。CookieをJavaScriptで読まず、認証・個人データを永続ストレージへ保存しない。
 
 Vue/TypeScriptの現用コード全体をV8 coverageの分母に含め、Vitest・Vue Test Utilsで画面操作・実Routerのmemory history・APIの応答検証・異常系・競合を確認する。これは実ブラウザとDBを接続した試験とは区別する。採用するライブラリの具体版・コマンドはFrontendのpackage/lockfileとMakefileで管理する。アプリ仕様・API・Cookie・ドメイン・DBの保存契約は変更しない。
+
+## Collection本体の新規保存（Issue #18）
+
+停止中の本体を保存して既存一覧・詳細へ接続する範囲と、同じ要求の再試行で重複作成しない方式に合意した。HTTP境界でCSRF・Cookie・厳密なJSONを扱い、CreateCollectionユースケースがセッション由来Userと入力条件を確認する。保存アダプターは本人の作成処理をRead Committedのトランザクション内advisory lockで直列化し、要求記録の確認と本体・要求記録の保存を行う。既存の[Go内部の依存方向](#go内部の依存方向合意済み)を維持する。
+
+Frontendは新規ページと専用composableを追加し、既存の単一sessionを使う。送信結果不明では同じ要求番号・本文を維持し、再試行で返された同じIDから詳細を取得する。画面離脱・ログアウトでは下書き消去と遅延応答破棄を行う。保存を認証通過後まで取り消せるとは扱わない。Job・Reportや既存入力スナップショットは変更しない。
+
+通信契約・入力上限と再試行の限界は[作成API](API仕様/post-api-collections.md)、状態・操作は[新規画面](画面仕様/コレクションの新規作成.md)、保存記録と最小権限は[DB設計](database-design.md#collection本体の新規保存issue-18)を参照する。技術的な保存構造・URL・応答は合意範囲を具体化する実装判断として記録する。

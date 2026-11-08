@@ -10,6 +10,7 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 | `GET /api/me` | [本人情報取得](get-api-me.md) | パス・役割・Cookieによる本人特定・正常200とlogin_idのJSONに合意。主要エラーは共通表に合意。その他の詳細は未決定 |
 | `POST /api/logout` | [ログアウト](post-api-logout.md) | #54でPOST・CSRF・対象セッション物理削除後のCookie削除・204・再試行・401/403/500に合意 |
 | `GET /api/collections`・`GET /api/collections/{id}` | [設定取得](get-api-collections.md) | #56の委任に基づく実装判断。Cookie認証・所有者限定・他者404 |
+| `POST /api/collections` | [Collection本体の作成](post-api-collections.md) | #18の本体作成と重複しない再試行に合意。具体契約は実装判断 |
 | `GET /api/reports`・`GET /api/reports/{id}` | [保存済みReport取得](get-api-reports.md) | #57の委任に基づく実装判断。Jobによる所有者限定・保存本文を返す |
 
 ログイン・本人情報取得は [Issue #53](https://github.com/smofktn/watchbrief/issues/53)、ログアウトAPIは [Issue #54](https://github.com/smofktn/watchbrief/issues/54)を対象とする。その他の後続APIは各Issueの設計時に追加する。

@@ -382,3 +382,22 @@ Job.user_idはNOT NULL/RESTRICT、Collection参照はSET NULL（NULLは完了履
 管理seedの現行fixtureはv3で、対象状態、出典付きcurrent_stateとupdate、本文、入力snapshotを整合させる。snapshotはschema_version、調査方針、初回確認方針、有効対象・情報源の履歴値を含む。検証途中の旧v1/v2履歴は入力不変の方針に従って非上書きで保持するが、現行seedの参照例にはしない。新規環境ではv3だけを追加する。
 
 取得失敗の本文表示は正本のルールに従って情報源の名称・URLだけとし、reasonは構造化行に保持して本文へ含めない。
+
+## Collection本体の新規保存（Issue #18）
+
+停止中の本体作成と、同じ要求の再試行で重複作成しない方式に合意した。実装判断としてgoose版9にcollection_creation_requestsを追加する。現在のcollectionsの型・既定停止状態と配下関係は維持する。
+
+| 列 | 物理型・制約 | 役割 |
+|---|---|---|
+| user_id | text/C、NOT NULL、usersへRESTRICT | 要求の所有者 |
+| request_key | text/C、小文字UUID v4のCHECK | 1回の作成操作を識別する値。エンティティIDではない |
+| input_digest | bytea、32byte CHECK | 作成入力の固定順JSONのSHA-256。設定全文は重複保存しない |
+| collection_id | text/C、UNIQUE、collectionsへSET NULL | 作成結果。削除後はNULLで旧要求の復活を防止 |
+
+主キーは(user_id,request_key)。別Userの同じ番号は別要求とする。主キー索引とcollection_idの一意索引以外は追加しない。要求記録は削除後も保持し、この段階では期限・自動消去を追加しない。業務エンティティのULID方針は変更しない。
+
+本人の作成処理はhashtextextended(user_id,18)のtransaction advisory lockで直列化する。認証のcredential lockとは別の入力・seedを使う。Read Committedにより待機解除後のSELECTで直前に確定した要求記録を読めるようにする。新規Collectionと要求記録は同じトランザクションで保存し、片側だけを残さない。番号・入力が同じなら既存ID、不一致または削除済みなら409。本人の最大display_order+1へ追加し、既存行を変更しない。整数上限を超える場合も部分保存せず失敗させる。後続の並べ替え実装ではこの作成処理との競合も扱う。
+
+APIへcollectionsのid・user_id・name・research_instruction・initial_lookback_mode・initial_lookback_days・display_orderの列INSERTと、要求記録のSELECT/INSERTだけを追加する。enabled・作成更新日時はDB既定値でありINSERTを許可しない。設定のUPDATE/DELETE、配下への書込、要求記録のUPDATE/DELETE、User更新・DDL・ロール管理は追加しない。所有者の行制限はAPIのセッション由来条件で行い、DB接続権限だけでUser分離を保証すると解釈しない。
+
+版9のDownは要求記録を削除するため通常操作に含めない。新規保存の[API契約](API仕様/post-api-collections.md)と[検証入口](../backend/README.md#collection本体の新規保存issue-18)を参照する。旧版3のSELECT-onlyは当時の範囲として保持する。
