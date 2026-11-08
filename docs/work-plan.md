@@ -66,6 +66,12 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 
 現在のローカル構築・正常経路・実DB停止と復旧の横断検証は[起動・確認手順](verification-issue-17.md)を参照する。手順と実行結果を区別し、結果はIssue/PRへ記録する。
 
+## PRの自動検証（Issue #70・合意済み）
+
+[#70](https://github.com/smofktn/watchbrief/issues/70)は、#17・#68の既存Make入口をGitHub Actionsへ接続する最小CIを担当する。main向けPRで依存準備→テスト・型検査・差分検査→ビルドを実行し、GitHub上で結果を確認する。runtimeの正本は `.tool-versions`、利用手順と対象外は[CI手順](../CONTRIBUTING.md#ciissue-70)を参照する。実行結果はIssue・PRに記録する。
+
+実DB・PTY・Chromium E2EのCI化やcoverageの強制は含めない。手動配備・HTTPS・復旧は #21、手動手順を確立した後の配備自動化は #29に分ける。今回のCI採用は #29の方式採用やAWS作成・課金・公開の承認を意味しない。
+
 ## 初期実装・構築への引き継ぎ
 
 | Issue | 対象 | 主な入力 |

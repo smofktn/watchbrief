@@ -23,6 +23,26 @@ WatchBriefは、全体の骨格を整理し、最小のハッピーパスが動�
 - コマンドを追加・変更したら担当Makefileとhelp、必要なルートの委譲、利用手順を同じ変更で更新する。複雑な処理は既存のscripts等へ置き、Makefileはその入口とする。
 - パスワードそのものをMake変数・引数へ渡さず、非表示入力かGit対象外の秘密ファイルを使う。初期設定・migration等を通常の起動へ混ぜず、破壊的なreset/volume削除は通常ターゲットに含めない。
 
+## CI（Issue #70）
+
+[CI workflow](.github/workflows/ci.yml)は、main向けPRの作成・更新・再オープン時に、標準GitHub-hosted Ubuntu 24.04 runnerの1ジョブで動く。文書だけの変更も対象とし、PRとmainを統合したコミットを検査する。Go・Nodeは各setup Actionから `.tool-versions` を直接読み、依存はGo module情報とnpm lockfileに従う。
+
+ローカルでは `.tool-versions` のruntimeを導入し、ルートで次を実行する。DB・APIの起動やSecretの設定は不要。
+
+```bash
+make backend-deps frontend-install
+make check
+make build
+```
+
+`frontend-install` は `npm ci --ignore-scripts` を維持する。`make check` はGo全packageのrace試験、Vue/TypeScript型検査、Vitest、作業ツリーの差分検査を行う。CIではさらにPRのbaseから検査対象HEADまで `git diff --check` を実行し、コミット済み変更の空白エラーも検出する。ローカルで作業ブランチのコミット差分を確認する場合は、最新の参照をfetchした後に `git diff --check origin/main...HEAD` を実行する。`make build` は画面とAPI・User作成CLI・パスワード再設定CLIをビルドする。
+
+PRのChecksから `CI / Check and build` の詳細を開き、失敗した `Install dependencies`・`Check`・`Build` のstepを確認する。同じMakeコマンドで再現し、修正をpushすると再実行される。古いコミットの成功を現在の成功とみなさず、PRの最新headに対する結果を確認する。同じPRに新しい実行が始まると古い実行をキャンセルし、各ジョブは20分で打ち切る。競合中のPRやforkからのPRはGitHub側の制約・承認待ちで開始されない場合があり、PRとActionsの表示を確認する。権限を広げて回避しない。
+
+外部Actionsは完全commit SHAで固定し、更新時は公式release・互換性とタグの参照先を再確認する。`contents: read` のみ許可し、checkoutの認証情報は保持しない。依存キャッシュは最初は無効とし、実測で必要になったら検討する。Publicリポジトリの標準runner実行は[GitHubの無料条件](https://docs.github.com/en/actions/concepts/billing-and-usage)の範囲で利用する。
+
+実DB・PTY・Chromium E2E、coverageアップロード・割合の強制、監査の必須ゲート化、配備、branch protection・required checksの管理設定は対象外。CIの成功はこれらの確認を意味しない。開発用間接依存の既知moderate指摘は[Frontendの記録](frontend/README.md#frontendの責務とテストissue-68)を参照する。手動配備は #21、配備自動化は #29で別に扱う。AWS・DB・外部APIのSecret、実設定、Report、ログをGitや公開コメントへ追加しない。
+
 ## 作業単位
 
 - ブランチは `main → 親Issueブランチ → 子Issueブランチ` とし、子のPRは親をbaseにする。子を親へ集約し、親全体がまとまったら親からmainへPRを作る。push時の追跡先は対応するリモートブランチとし、PR作成時はbaseを確認する。実際のマージ・Issue状態変更は明示指示時のみ。
