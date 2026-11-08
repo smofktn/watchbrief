@@ -502,12 +502,12 @@ DBへのホストからの接続はloopbackへ限定し、アプリとDBの資�
 
 ## Issue #55の保護URLとログイン復帰
 
-既存の「未認証の保護URL→ログイン→安全な元URLへ復帰」を、委任に基づく実装判断で具体化する。FrontendのHistory APIによって `/login` と本人情報の `/me` を扱い、追加のRouter依存は導入しない。認証・認可は引き続きGo APIが担い、画面のURL検証はAPI認証の代用としない。
+既存の「未認証の保護URL→ログイン→安全な元URLへ復帰」を、委任に基づく実装判断で具体化する。現在はIssue #68で採用したVue RouterのWeb Historyで `/login`・`/me`・設定/Reportの一覧・詳細を扱う。認証・認可は引き続きGo APIが担い、画面のURL検証はAPI認証の代用としない。
 
 1. `/` を `/me` へ正規化し、初回・再読込・履歴移動で `GET /api/me` を呼ぶ。401とunauthenticatedを確認したら `/login?return_to=%2Fme` へ移る。500や通信障害なら元の画面で再試行させる。
 2. ログイン画面でも本人情報を確認する。既に認証済みなら安全な戻り先へ移り、未認証ならフォームを表示する。ログイン成功204後も `GET /api/me` 成功を待って移る。
-3. `return_to` は実装済み保護パスの完全一致で許可する。現段階は `/me` のみ。未知・外部・プロトコル相対・逆スラッシュ・二重エンコード・login/APIパス等を遷移先として使わない。重複指定も無効とする。不要なクエリ・フラグメントは履歴から除き、ログ・永続ストレージへ保存しない。
-4. リダイレクトは `history.replaceState` で現在の履歴を置き換え、ログインへの循環を避ける。`popstate` とBFCacheからの復帰でも再確認し、遅れた別要求の結果を新しい画面へ適用しない。
+3. `return_to` は実装済み保護パスの完全一致で許可する。現在は `/me`・`/collections`・`/reports` と正規ULIDの詳細パスを許可する。未知・外部・プロトコル相対・逆スラッシュ・二重エンコード・login/APIパス等を遷移先として使わない。重複指定も無効とする。不要なクエリ・フラグメントは履歴から除き、ログ・永続ストレージへ保存しない。
+4. リダイレクトはVue Routerの `router.replace` で現在の履歴を置き換え、ログインへの循環を避ける。`popstate` とBFCacheからの復帰でも再確認し、遅れた別要求の結果を新しい画面へ適用しない。
 5. ログアウト開始時に個人データを消して `/login` へ移す。logging-out/logout-error中の履歴移動は本人情報の再取得を行わず、既存の完了確認・再試行を維持する。
 
 保護ルート許可一覧は `frontend/src/navigation.ts` に集約する。後続のCollection・Report画面を追加するときは、画面・APIの所有者検証・戻り先の単体／ブラウザ試験と同時に一覧を拡張する。未実装の画面へ今から転送する機能は追加しない。API・DBスキーマ・Cookie契約は変更しない。
@@ -885,3 +885,12 @@ HTTP境界で既存の厳密なCookie検証を行い、ユースケースがセ�
 管理seedはAPIと分離し、migrationロールによる1トランザクションで専用の架空設定、成功Job/Attempt、本文と構造化子テーブルを保存する。安定IDと全指定値の一致確認により再実行を安全にし、衝突時は全体をrollbackする。APIへ新たに付与する権限はSELECTだけとする。
 
 HTTPのDB処理は10秒、Report画面の取得は15秒で打ち切り、内部原因をレスポンス・ログへ出さず固定ラベルで記録する。ログアウト開始・画面移動時にはReportを含む全個人データを消去し、世代が古い応答は採用しない。詳細は[API](API仕様/get-api-reports.md)、[DB](database-design.md#保存reportの物理化issue-57)、[画面](画面仕様/保存済みReportの取得.md)を参照する。
+
+
+## Frontendの責務分離（Issue #68）
+
+Vue Routerを採用し、URLごとのページと共通レイアウトを分ける。`App.vue` は全体の組み立てと単一sessionの提供、`layouts/` は共通枠と認証状態の表示、`pages/` はURLとfeature表示の接続を担当する。`features/auth` はフォーム・認証API・共有sessionを持ち、各Collection/Report featureは表示・取得・API・応答guardを持つ。共通resource composableは取得状態・timeout・消去・再試行と遅延応答の破棄を担当する。詳細な配置と実行入口は[Frontend](../frontend/README.md#frontendの責務とテストissue-68)を参照する。
+
+sessionはAppで一度だけ生成してprovide/injectで共有し、resource featureが認証状態へ直接代入しない。APIの401 unauthenticatedは世代付きの通知でsessionに伝える。ログアウト開始前にresource消去を同期して行い、遅い本人情報・ログイン・取得応答が新しい画面やログアウト失敗状態を上書きしない。ログアウト204以外を完了とせず、失敗時には履歴・BFCacheからの本人情報再取得を止める。CookieをJavaScriptで読まず、認証・個人データを永続ストレージへ保存しない。
+
+Vue/TypeScriptの現用コード全体をV8 coverageの分母に含め、Vitest・Vue Test Utilsで画面操作・実Routerのmemory history・APIの応答検証・異常系・競合を確認する。これは実ブラウザとDBを接続した試験とは区別する。採用するライブラリの具体版・コマンドはFrontendのpackage/lockfileとMakefileで管理する。アプリ仕様・API・Cookie・ドメイン・DBの保存契約は変更しない。

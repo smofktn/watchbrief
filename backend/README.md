@@ -38,6 +38,10 @@ make test
 
 `make test` はBackend全体（`./...`）をrace付きで検証する。実DBは `make test-db`、端末からの作成は `make verify-user-create` で個別に確認する。旧AI案のGoコード（auth/httpapi/store/config）は内容を変えず[参考ディレクトリ](../reference/issue-53-previous-proposal/README.md)へ隔離し、通常のパッケージ探索に含めない。旧DBファイルは元の場所に参考として保持し、現在のmigration/sqlcでは読み込まない。
 
+カバレッジは `make coverage`（ルートでは `make backend-coverage`）で計測する。現在のGo module全体を `go test -coverprofile` のpackage標準の範囲で計測し、sqlc生成コードやCLIも分母に含める。生profileは `.local/coverage/backend/coverage.out`、行別表示は同じ場所の `index.html`。`go tool cover -func` で関数別と全体のstatement coverageを表示する。ルートの `make coverage` はFrontendも計測する。生成物はGit対象外。
+
+この数値は非DBのGo試験だけを表す。アダプターの偽I/O試験では、値の変換、所有者・hashの引き渡し、失敗分類、処理順序とtransaction終了を検証する。SQLの所有者条件・DB制約・競合ロックの実際の動作や端末の非表示入力は、実DB・PTY・隔離環境の試験で別に確認する。coverageの割合だけをこれらの動作保証には使わない。
+
 DBの起動・用途別ロール・gooseによるテーブル作成は[ローカルPostgreSQL](../docs/local-postgresql.md)で管理する。ログイン受付からDBへ接続済み。本人情報取得も同じAPI用ロールで接続する。
 
 共通Argon2id部品は `internal/security/password`。API内では共有インスタンスを使い、別プロセスのUser作成でも同じ実装を使う。初期プロファイル・テスト・キャンセル等は[共通ハッシュ](../docs/password-hashing.md)へまとめる。管理コマンドはこの部品を使用する。未知IDでも起動時に生成したダミーハッシュを照合し、誤パスワードと同じ401を返す。通信全体の処理時間が常に同一になる保証ではない。

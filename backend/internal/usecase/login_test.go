@@ -102,3 +102,54 @@ func TestCancelledLoginDoesNotReadStore(t *testing.T) {
 		t.Fatal("cancelled login reached store")
 	}
 }
+
+type cancelAfterSessionStore struct {
+	*loginStoreFake
+	cancel context.CancelFunc
+}
+
+func (s cancelAfterSessionStore) CreateSession(c context.Context, session domain.Session, hash string) error {
+	err := s.loginStoreFake.CreateSession(c, session, hash)
+	s.cancel()
+	return err
+}
+func TestLoginWithholdsTokenWhenCancelledAfterSave(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &loginStoreFake{}
+	raw := [32]byte{8}
+	digest := sha256.Sum256(raw[:])
+	uc := Login{Store: cancelAfterSessionStore{s, cancel}, Verifier: &verifierFake{match: true}, DummyHash: "dummy", NewID: func() (string, error) { return "session", nil }, NewToken: func() ([32]byte, [32]byte, error) { return raw, digest, nil }}
+	got, err := uc.Execute(ctx, "user", "example-only-password")
+	if got != [32]byte{} || err != ErrLogin || len(s.sessions) != 1 {
+		t.Fatal("cancelled login exposed token or retried write")
+	}
+}
+func TestLoginMissingDependencies(t *testing.T) {
+	for _, missing := range []string{"store", "verifier", "dummy hash", "ID", "token"} {
+		t.Run(missing, func(t *testing.T) {
+			s := &loginStoreFake{}
+			v := &verifierFake{match: true}
+			uc := Login{Store: s, Verifier: v, DummyHash: "dummy", NewID: func() (string, error) { t.Fatal("generated ID with missing dependency"); return "", nil }, NewToken: func() ([32]byte, [32]byte, error) {
+				t.Fatal("generated token with missing dependency")
+				return [32]byte{}, [32]byte{}, nil
+			}}
+			switch missing {
+			case "store":
+				uc.Store = nil
+			case "verifier":
+				uc.Verifier = nil
+			case "dummy hash":
+				uc.DummyHash = ""
+			case "ID":
+				uc.NewID = nil
+			case "token":
+				uc.NewToken = nil
+			}
+			got, err := uc.Execute(context.Background(), "user", "example-only-password")
+			if got != [32]byte{} || err != ErrLogin || s.findCalls != 0 || len(v.encoded) != 0 {
+				t.Fatal("incomplete login dependencies reached authentication")
+			}
+		})
+	}
+}

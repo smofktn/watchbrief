@@ -13,8 +13,9 @@ export RESET_DB_PASSWORD_FILE
 export APP_ORIGIN API_ADDR API_PASSWORD_FILE LOGIN_ID DB_PASSWORD_FILE
 
 CURRENT_PACKAGES := ./...
+COVERAGE_DIR := $(PROJECT_ROOT)/.local/coverage/backend
 
-.PHONY: verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+.PHONY: verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test coverage test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 help:
 	@printf '%s\n' \
@@ -28,6 +29,7 @@ help:
 	  '  make verify-password-reset  専用fixtureで再設定と競合を検証' \
 	  '  make user-create LOGIN_ID=fictional_user  パスワードは端末で非表示入力' \
 	  '  make test / test-db       現在のコードの試験 / 実DBの接続試験' \
+	  '  make coverage             全Go packageのcoverageとHTML（実DB試験は別）' \
 	  '  make fmt                  現在のGoコードを整形' \
 	  '  make benchmark-password / check-input / verify-user-create' \
 	  '  make verify-login-api     実DBのログイン試験（検証セッション2件を保持）' \
@@ -66,6 +68,12 @@ fmt:
 
 test:
 	$(GO) test -race $(CURRENT_PACKAGES)
+
+coverage:
+	@mkdir -p "$(COVERAGE_DIR)"
+	$(GO) test -coverprofile="$(COVERAGE_DIR)/coverage.out" $(CURRENT_PACKAGES)
+	$(GO) tool cover -func="$(COVERAGE_DIR)/coverage.out"
+	$(GO) tool cover -html="$(COVERAGE_DIR)/coverage.out" -o "$(COVERAGE_DIR)/index.html"
 
 test-db:
 	$(GO) test -race -tags integration ./internal/adapter/postgres

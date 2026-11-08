@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { canonicalLoginPath, isProtectedPath, loginDestination, loginPathFor, safeReturnPath } from '../src/navigation.ts'
 
 test('only implemented protected paths can be a login destination', () => {

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/smofktn/watchbrief/backend/internal/domain"
 )
@@ -129,4 +131,81 @@ func BenchmarkHash(b *testing.B) {
 			b.Fatal("hash failed")
 		}
 	}
+}
+
+func TestUnavailableHasherAndQueuedCancellation(t *testing.T) {
+	for _, h := range []*Hasher{nil, {}} {
+		if _, err := h.Hash(context.Background(), "example-only-password"); err != ErrUnavailable {
+			t.Fatal("unavailable hasher accepted input")
+		}
+	}
+	h := NewHasher()
+	h.slots <- struct{}{}
+	h.slots <- struct{}{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	observed := &admissionContext{Context: ctx, entered: started}
+	result := make(chan error, 1)
+	go func() { result <- h.acquire(observed) }()
+	select {
+	case <-started:
+	case err := <-result:
+		t.Fatalf("queue did not block: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter did not reach admission queue")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("queued request did not cancel")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued request remained blocked")
+	}
+	if len(h.slots) != 2 {
+		t.Fatal("cancelled waiter changed queue ownership")
+	}
+	<-h.slots
+	<-h.slots
+	if err := h.acquire(context.Background()); err != nil {
+		t.Fatal("queue unusable after cancellation")
+	}
+	<-h.slots
+}
+func TestVerifyRejectsMalformedBase64BeforeHashing(t *testing.T) {
+	data, err := os.ReadFile("testdata/reference.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct{ Password, Encoded string }
+	if err := json.Unmarshal(data, &vector); err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(vector.Encoded, "$")
+	key := parts[len(parts)-1]
+	for _, encoded := range []string{strings.TrimSuffix(vector.Encoded, key) + "!" + key[1:], strings.TrimSuffix(vector.Encoded, key) + key[:len(key)-1] + "=", strings.Replace(vector.Encoded, "$AAE", "$AA$", 1)} {
+		if matched, err := (*Hasher)(nil).Verify(context.Background(), vector.Password, encoded); matched || err != ErrInvalidHash {
+			t.Fatal("invalid hash reached unavailable KDF")
+		}
+	}
+	if matched, err := (*Hasher)(nil).Verify(context.Background(), vector.Password, vector.Encoded); matched || err != ErrUnavailable {
+		t.Fatal("valid profile must still require initialized KDF")
+	}
+	if matched, err := NewHasher().Verify(context.Background(), "short", vector.Encoded); matched || err != domain.ErrInvalidCredentialsInput {
+		t.Fatal("invalid verification input accepted")
+	}
+}
+
+// Done is evaluated when acquire reaches its select with both slots occupied.
+type admissionContext struct {
+	context.Context
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (c *admissionContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Done()
 }
