@@ -402,3 +402,185 @@ describe('logout and stale response isolation', () => {
     expect(fetch.mock.calls.length).toBe(calls)
   })
 })
+
+describe('new stopped Collection creation', () => {
+  const fill = async () => {
+    await wrapper!.get('#collection-name').setValue('新しい架空Collection')
+    await wrapper!.get('#collection-instruction').setValue('架空の調査方針')
+  }
+  test('protected create URL returns after login; save opens persisted detail then list', async () => {
+    let authenticated = false
+    let saved = false
+    let input: unknown
+    const { router, fetch, app } = await start('/collections/new', (path, options) => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null, 204) }
+      if (options.method === 'POST') { saved = true; input = JSON.parse(String(options.body)); return response({ id }, 201) }
+      if (path === '/api/collections') { return response({ collections: saved ? [summary] : [] }) }
+      return response({ ...collection, name: '新しい架空Collection' })
+    })
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Fcollections%2Fnew')
+    await fillAndSubmit()
+    await fill()
+    await click('保存')
+    expect(input).toEqual({ name: '新しい架空Collection', research_instruction: '架空の調査方針', initial_lookback_mode: 'ai', initial_lookback_days: null })
+    expect(router.currentRoute.value.path).toBe(`/collections/${id}`)
+    expect(app.text()).toContain('状態：OFF')
+    expect(app.text()).toContain('ウォッチ対象はありません')
+    const options = fetch.mock.calls.find(([, options]) => options.method === 'POST' && String(options.body).includes('research_instruction'))![1]
+    expect((options.headers as Record<string,string>)['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/)
+    await router.push('/collections')
+    await flushPromises()
+    expect(app.text()).toContain('架空の設定')
+  })
+  test('local input errors stop HTTP and focus the invalid field; days are sent as an integer', async () => {
+    const { fetch } = await start('/collections/new', (path, options) => {
+      if (options.method === 'POST') { return response({ error: { code: 'invalid_request' } }, 400) }
+      return me()
+    })
+    await click('保存')
+    expect(document.activeElement?.id).toBe('collection-name')
+    expect(fetch.mock.calls.filter(([, o]) => o.method === 'POST')).toHaveLength(0)
+    await fill()
+    await wrapper!.get('#collection-mode').setValue('days')
+    await wrapper!.get('#collection-days').setValue('366')
+    await click('保存')
+    expect(document.activeElement?.id).toBe('collection-days')
+    await wrapper!.get('#collection-days').setValue('30')
+    await click('保存')
+    const sent = fetch.mock.calls.find(([, o]) => o.method === 'POST')![1]
+    expect(JSON.parse(String(sent.body)).initial_lookback_days).toBe(30)
+    expect((wrapper!.get('#collection-name').element as HTMLInputElement).value).toBe('新しい架空Collection')
+    expect((wrapper!.get('fieldset').element as HTMLFieldSetElement).disabled).toBe(false)
+  })
+  test.each(['network', '500', 'invalid-success'])('ambiguous %s retains exact payload/key, freezes edits, and safely retries', async (failure) => {
+    const attempts: RequestInit[] = []
+    const { router, app } = await start('/collections/new', (path, options) => {
+      if (options.method === 'POST') {
+        attempts.push(options)
+        if (attempts.length === 1) {
+          if (failure === 'network') { throw new Error('lost response') }
+          return failure === '500' ? response({ error: { code: 'internal_error' } }, 500) : response({ id: 'invalid' }, 201)
+        }
+        return response({ id }, 200)
+      }
+      return path === '/api/me' ? me() : response(collection)
+    })
+    await fill()
+    await click('保存')
+    expect(app.text()).toContain('保存結果を確認できません')
+    expect((app.get('fieldset').element as HTMLFieldSetElement).disabled).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts).toHaveLength(2)
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+    expect(router.currentRoute.value.path).toBe(`/collections/${id}`)
+  })
+  test('double submit is blocked; logout clears the draft and ignores a delayed successful save', async () => {
+    const pending = deferred<Response>()
+    const { app, router, fetch } = await start('/collections/new', (path, options) => {
+      if (path === '/api/logout') { return response(null, 204) }
+      if (options.method === 'POST') { return pending.promise }
+      return path === '/api/me' ? me() : response(collection)
+    })
+    await fill()
+    await app.get('form').trigger('submit')
+    await app.get('form').trigger('submit')
+    expect(fetch.mock.calls.filter(([path, o]) => path === '/api/collections' && o.method === 'POST')).toHaveLength(1)
+    await click('ログアウト')
+    pending.resolve(response({ id }, 201))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(app.text()).not.toContain('新しい架空Collection')
+    expect(app.find('#collection-name').exists()).toBe(false)
+  })
+  test.each([[401, 'unauthenticated'], [403, 'csrf_rejected'], [409, 'creation_conflict']])('save %s handles expiry or refusal without losing classification', async (status, code) => {
+    const { app, router } = await start('/collections/new', (_path, options) => options.method === 'POST' ? response({ error: { code } }, Number(status)) : me())
+    await fill()
+    await click('保存')
+    if (status === 401) {
+      expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Fcollections%2Fnew')
+      expect(app.find('#collection-name').exists()).toBe(false)
+    } else if (status === 403) {
+      expect(app.text()).toContain('送信元を確認できません')
+      expect((app.get('fieldset').element as HTMLFieldSetElement).disabled).toBe(false)
+    } else {
+      expect(app.text()).toContain('一覧で保存結果を確認してください')
+      expect(app.findAll('button').find(b => b.text() === '同じ内容で再試行')!.attributes('disabled')).toBeDefined()
+    }
+  })
+})
+
+describe('creation retry boundaries after an ambiguous result', () => {
+  test.each([[400, 'invalid_request'], [403, 'csrf_rejected']])('later %s never discards the original request', async (status, code) => {
+    const attempts: RequestInit[] = []
+    const { app, router } = await start('/collections/new', (path, options) => {
+      if (options.method === 'POST') {
+        attempts.push(options)
+        if (attempts.length === 1) { throw new Error('response lost after commit') }
+        if (attempts.length === 2) { return response({ error: { code } }, Number(status)) }
+        return response({ id }, 200)
+      }
+      return path === '/api/me' ? me() : response(collection)
+    })
+    await app.get('#collection-name').setValue('架空の下書き')
+    await click('保存')
+    await click('同じ内容で再試行')
+    expect((app.get('fieldset').element as HTMLFieldSetElement).disabled).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts).toHaveLength(3)
+    expect(new Set(attempts.map(a => a.body)).size).toBe(1)
+    expect(new Set(attempts.map(a => (a.headers as Record<string, string>)['Idempotency-Key'])).size).toBe(1)
+    expect(router.currentRoute.value.path).toBe(`/collections/${id}`)
+  })
+  test('save timeout retains input and the original request for a retry', async () => {
+    const attempts: RequestInit[] = []
+    const { app, router } = await start('/collections/new', (path, options) => {
+      if (options.method === 'POST') {
+        attempts.push(options)
+        if (attempts.length === 1) {
+          return new Promise((_resolve, reject) => options.signal!.addEventListener('abort', () => reject(new Error('timeout'))))
+        }
+        return response({ id }, 200)
+      }
+      return path === '/api/me' ? me() : response(collection)
+    })
+    await app.get('#collection-name').setValue('架空の下書き')
+    vi.useFakeTimers()
+    await click('保存')
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(app.text()).toContain('保存結果を確認できません')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('架空の下書き')
+    await click('同じ内容で再試行')
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+    expect(router.currentRoute.value.path).toBe(`/collections/${id}`)
+  })
+  test('navigation aborts the request and ignores a late successful result', async () => {
+    const pending = deferred<Response>()
+    let signal: AbortSignal | null | undefined
+    const { app, router } = await start('/collections/new', (path, options) => {
+      if (options.method === 'POST') { signal = options.signal; return pending.promise }
+      return path === '/api/me' ? me() : response({ collections: [] })
+    })
+    await app.get('#collection-name').setValue('移動で消す架空の下書き')
+    await app.get('form').trigger('submit')
+    await router.push('/collections')
+    await flushPromises()
+    expect(signal?.aborted).toBe(true)
+    pending.resolve(response({ id }, 201))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/collections')
+    await router.push('/collections/new')
+    await flushPromises()
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('')
+  })
+})
+
+test('Collection names containing only Unicode whitespace are rejected before saving', async () => {
+  const { app, fetch } = await start('/collections/new', () => me())
+  await app.get('#collection-name').setValue('\u0085\u3000')
+  await click('保存')
+  expect(app.find('#collection-name-error').exists()).toBe(true)
+  expect(fetch.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(0)
+})

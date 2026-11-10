@@ -219,6 +219,11 @@ try {
   issued.push(await token())
   await click('ログアウト')
   await waitFor("document.querySelector('#password') !== null")
+  if (fixture.verify_creation) {
+    phase = 'collection-creation'
+    const { verifyCreation } = await import('./verify-collection-creation-browser.mjs')
+    issued.push(await verifyCreation({ call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))

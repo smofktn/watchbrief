@@ -12,7 +12,17 @@ type CollectionStore interface {
 	OwnedCollection(context.Context, string, string) (domain.Collection, error)
 }
 
-type Collections struct{ Store CollectionStore }
+type Collections struct {
+	Store   CollectionStore
+	Creator *CreateCollection
+}
+
+func (uc Collections) Execute(ctx context.Context, digest [32]byte, key string, input domain.NewCollection) (string, bool, error) {
+	if uc.Creator == nil {
+		return "", false, domain.ErrCollectionStore
+	}
+	return uc.Creator.Execute(ctx, digest, key, input)
+}
 
 func (uc Collections) List(ctx context.Context, digest [32]byte) ([]domain.CollectionSummary, error) {
 	if ctx.Err() != nil || uc.Store == nil {

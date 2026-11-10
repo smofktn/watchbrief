@@ -35,3 +35,10 @@ form {
 }
 
 .report-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+
+fieldset { min-width: 0; display: grid; gap: 1.25rem; }
+.field textarea, .field select { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; }
+.field textarea { resize: vertical; }
+#create-title, #settings-title { overflow-wrap: anywhere; }
+
+.collection-settings { overflow-wrap: anywhere; }

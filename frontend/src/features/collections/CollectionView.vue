@@ -7,8 +7,9 @@ const { state, message, data, load } = useCollections()
 </script>
 
 <template>
-  <section aria-labelledby="settings-title">
-    <h2 id="settings-title">コレクション設定（読み取り専用）</h2>
+  <section class="collection-settings" aria-labelledby="settings-title">
+    <h2 id="settings-title">コレクション設定</h2>
+    <p v-if="route.path === '/collections'"><RouterLink to="/collections/new">新規作成</RouterLink></p>
     <p v-if="state === 'loading'" role="status">設定を読み込んでいます。</p>
     <template v-else-if="state === 'error'">
       <p role="alert">{{ message }}</p><Button label="設定を再試行" @click="load()" />
