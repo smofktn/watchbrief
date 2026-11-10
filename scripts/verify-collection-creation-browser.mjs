@@ -1,0 +1,61 @@
+// Runs with the existing private browser driver, API and disposable DB.
+import assert from 'node:assert/strict'
+
+export const verifyCreation = async ({ call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }) => {
+  await navigate('/collections/new')
+  await waitFor("document.querySelector('#password') !== null")
+  assert.equal(await evaluate('location.pathname+location.search'), '/login?return_to=' + encodeURIComponent('/collections/new'))
+  await submit()
+  await waitFor("document.querySelector('#collection-name') !== null")
+  const set = async (id, value) => evaluate(`{ const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true})); }`)
+  await click('保存')
+  await waitFor("document.querySelector('#collection-name-error') !== null")
+  assert.equal(await evaluate('document.activeElement.id'), 'collection-name')
+  await set('collection-name', '画面保存の架空設定')
+  await set('collection-instruction', '画面から保存する架空指示')
+  await set('collection-mode', 'days')
+  await waitFor("document.querySelector('#collection-days') !== null")
+  await set('collection-days', '366')
+  await click('保存')
+  assert(await evaluate("document.querySelector('#collection-days-error') !== null"))
+  await set('collection-days', '30')
+
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Mobile form overflows')
+  await call('Emulation.clearDeviceMetricsOverride')
+  assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Desktop form overflows')
+
+  // An actual DB outage must keep all input and permit exactly the same retry.
+  stopDB()
+  await click('保存')
+  await waitFor("document.querySelector('form [role=alert]')?.textContent.includes('保存結果を確認できません')")
+  assert.equal(await evaluate("document.querySelector('#collection-name').value"), '画面保存の架空設定')
+  assert(await evaluate("document.querySelector('fieldset').disabled"))
+  startDB()
+
+  // Allow the real save to commit, then drop only the response at the browser fetch boundary.
+  await evaluate("window.creationBaseFetch=window.fetch.bind(window);window.creationRequests=[];window.dropCreationResponse=true;window.fetch=async(...args)=>{if(args[0]==='/api/collections'&&args[1]?.method==='POST'){window.creationRequests.push({body:args[1].body,key:args[1].headers['Idempotency-Key']});const r=await window.creationBaseFetch(...args);if(window.dropCreationResponse){window.dropCreationResponse=false;await r.text();throw new TypeError('fictional lost response')}return r}return window.creationBaseFetch(...args)}")
+  await click('同じ内容で再試行')
+  await waitFor("document.querySelector('form [role=alert]')?.textContent.includes('接続できず保存結果')")
+  await click('同じ内容で再試行')
+  await waitFor("location.pathname.startsWith('/collections/') && location.pathname!='/collections/new' && document.querySelector('#settings-title') !== null")
+  const id = await evaluate("location.pathname.split('/').at(-1)")
+  assert(await evaluate("window.creationRequests.length===2 && window.creationRequests[0].body===window.creationRequests[1].body && window.creationRequests[0].key===window.creationRequests[1].key"))
+  assert(await evaluate("document.querySelector('main').textContent.includes('状態：OFF') && document.querySelector('main').textContent.includes('30日前から')"))
+  await navigate('/collections/' + id)
+  await waitFor("document.querySelector('main').textContent.includes('画面保存の架空設定')")
+  await navigate('/collections')
+  await waitFor("document.querySelector('main').textContent.includes('画面保存の架空設定')")
+  assert.equal(await evaluate("[...document.querySelectorAll('a')].filter(a=>a.textContent==='画面保存の架空設定').length"), 1)
+  await navigate('/collections/new')
+  await waitFor("document.querySelector('#collection-name') !== null")
+  assert.equal(await evaluate("document.querySelector('#collection-name').value"), '')
+  await set('collection-name', '消去する架空の下書き')
+  const issuedToken = await token()
+  await click('ログアウト')
+  await waitFor("document.querySelector('#password') !== null")
+  assert(!(await evaluate("document.querySelector('main').textContent.includes('消去する架空の下書き') || document.querySelector('#collection-name') !== null")))
+  assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
+  console.log('Creation browser: protected return, field validation/focus, PC/mobile, actual DB outage/input retention, committed response loss/replay, list/detail/reload and logout draft clearing: passed')
+  return issuedToken
+}

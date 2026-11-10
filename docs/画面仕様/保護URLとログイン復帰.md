@@ -37,3 +37,5 @@ Issue #55で、[プロダクト仕様](../product-definition.md#保護urlとロ�
 Issue #57で `/reports` と `/reports/{正規ULID}` を保護パスへ追加する。詳細URLからログイン後に同じReportへ復帰する。[保存済みReportの取得](保存済みReportの取得.md)を参照する。
 
 Issue #68で画面・共通枠・feature・共有sessionへ責務を分離し、Vue Routerを採用する。上記のURL、表示、認証・失敗・消去の仕様は維持する。内部redirectと別の利用者操作が交差しても、後の遷移の確認と応答破棄を行う。テストの入口とcoverageの対象は[Frontend](../../frontend/README.md#frontendの責務とテストissue-68)を参照する。
+
+Issue #18の最初の範囲で `/collections/new` を保護パスへ追加する。未認証の直接アクセスはログイン後に空の新規フォームへ復帰する。保存中の401では下書きを消去する。下書きや要求番号を戻り先URLへ含めない。[新規作成](コレクションの新規作成.md)を参照する。

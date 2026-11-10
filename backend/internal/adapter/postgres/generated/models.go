@@ -27,6 +27,13 @@ type AppCollection struct {
 	UpdatedAt           pgtype.Timestamptz
 }
 
+type AppCollectionCreationRequest struct {
+	UserID       string
+	RequestKey   string
+	InputDigest  []byte
+	CollectionID pgtype.Text
+}
+
 type AppCollectionSchedule struct {
 	ID             string
 	CollectionID   string

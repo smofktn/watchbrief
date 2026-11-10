@@ -50,6 +50,9 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 	}
 	mux := http.NewServeMux()
 	if len(collections) > 0 && collections[0] != nil {
+		if creator, ok := collections[0].(CollectionCreator); ok {
+			mux.Handle("POST /api/collections", sameOriginHandler(origin, protection, collectionCreationHandler(creator, logger)))
+		}
 		mux.Handle("GET /api/collections", collectionHandler(collections[0], logger, false))
 		mux.Handle("GET /api/collections/{id}", collectionHandler(collections[0], logger, true))
 	}

@@ -176,3 +176,15 @@ make verify-password-reset
 IDを指定し、新パスワードを2回、端末で非表示入力する。共通Argon2idでハッシュ化してから専用ロールで接続し、User更新と全session削除を一体でcommitする。`RESET_DB_PASSWORD_FILE` はDBの秘密ファイルのパスだけを指定でき、既定は `../.local/watchbrief-password-resetter-password`。アプリのパスワードをMake変数・引数に入れない。
 
 不一致・入力不正・対象なしでは変更しない。通信障害で結果不明の場合はDB状態を確認してから再実行する。処理中APIの完了可能性、ロックとPHC再読取による競合制御、再設定同士の順序、専用fixtureの保持範囲と試験の制限は[再設定の詳細](../docs/password-reset.md)にまとめる。
+
+## Collection本体の新規保存（Issue #18）
+
+migration版9を明示適用してAPI・Frontendを起動し、一覧の「新規作成」から停止中Collectionを保存する。名前・任意の調査方針・初回の確認期間を入力できる。配下設定の編集や有効化は後続範囲である。[API契約](../docs/API仕様/post-api-collections.md)と[画面仕様](../docs/画面仕様/コレクションの新規作成.md)を参照する。
+
+`make verify-collection-creation` は、既存の `verify-issue17` の使い捨て環境へ新規保存の試験を追加する。通常DBは停止・初期化せず、専用project・空きポート・privateな資格情報を使い、最後にその環境だけを除去する。Go・Node、Frontend依存、Docker/Compose、goose、Chromiumの準備は[既存検証手順](../docs/verification-issue-17.md)と同じ。Chromiumに補助ライブラリが必要な環境はBROWSER_LIBRARY_PATHを指定する。
+
+APIでは同じ要求の再送と8並列送信、別番号の並列作成・表示順、入力条件・CSRF・他User404、2回目の書込失敗による全rollbackと復旧再試行、削除後の旧要求拒否、最小権限を確認する。ブラウザでは直接URLからログイン復帰、入力エラーとフォーカス、PC/スマホ幅、実DB停止時の入力保持、実際の保存後に応答だけをブラウザで破棄した再試行、一覧・詳細・再読み込み、ログアウト時の下書き消去を確認する。応答破棄はブラウザfetch境界の注入であり、実ネットワーク切断やcommit応答喪失の試験とは区別する。
+
+最初の要求が結果不明になった後は、同じ番号と入力で再試行する。画面離脱・再読み込み・認証状態変更で番号を失った場合は一覧で確認する。DBの要求記録は残るが、別の新規操作の同名作成を防ぐものではない。保存中にログアウトしても、認証通過済みのDB保存まで取り消す保証はない。
+
+CIには通常の単体試験だけを含め、実DB・Chromiumはこの明示コマンドで確認する。実行結果・未確認はIssue/PRへ記録する。

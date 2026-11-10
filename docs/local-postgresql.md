@@ -113,3 +113,7 @@ make db-migrate
 追加操作は `.local/watchbrief-password-resetter-password` を600で新規生成し、既存ファイルは維持する。既存ロールがあればtransaction全体を失敗させ、パスワードを上書きしない。新規bootstrap済み・追加済みの環境では再実行せずmigrationだけを実行する。失敗時にrole・ファイル・volumeを削除せず、現在の状態を確認する。
 
 provisioningはCREATE ROLE・CONNECT・app USAGE・search_pathと秘密パスワード設定を同transactionで行う。既存のAPI・作成者・migrationの秘密ファイルは変更しない。goose用ロールへCREATEROLEを追加しない。版7が専用ロールへのカラム/テーブル権限、版8がsession user_id索引を追加する。通常の起動へどちらも混ぜない。権限と競合の設計は[再設定](password-reset.md)を参照する。
+
+## Collection本体の作成権限（Issue #18）
+
+版9を明示migrationで適用する。APIへcollectionsの指定列INSERTとcollection_creation_requestsのSELECT/INSERTを追加する。既存データの更新・削除、enabled列の指定、配下設定の書込は許可しない。要求記録はDB内の非公開状態で、Gitへ保存しない。保存構造と制限は[DB設計](database-design.md#collection本体の新規保存issue-18)、隔離検証は[Backend](../backend/README.md#collection本体の新規保存issue-18)を参照する。通常の起動へmigrationを自動追加しない。

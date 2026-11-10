@@ -2,7 +2,7 @@
 
 ## 目的と採用状況
 
-認証済みUserが自分の保存済みCollection設定を読む。#17の順次実装の委任に基づく実装判断として、一覧を `GET /api/collections`、詳細を `GET /api/collections/{id}` とした。設定の追加・変更・削除APIは #18で扱う。
+認証済みUserが自分の保存済みCollection設定を読む。#17の順次実装の委任に基づく実装判断として、一覧を `GET /api/collections`、詳細を `GET /api/collections/{id}` とした。本体の追加は[作成API](post-api-collections.md)、変更・削除等は#18の後続範囲で扱う。
 
 認証は[共通のCookie方式](README.md#共通の認証と秘密情報)を使う。APIがCookieのハッシュから所有UserのIDを取得し、そのIDをSQLの所有者条件へ渡す。リクエストに指定された `user_id` を所有者として使わず、レスポンスにも所有User IDや認証情報を含めない。単なるULIDの推測困難性を認可の代わりにしない。
 
@@ -60,4 +60,4 @@ Scheduleなしは `schedule: null`、対象・情報源なしはそれぞれ空�
 
 認証を確認してから詳細ID・所有者を扱う。全応答は `Cache-Control: no-store`、JSON形式。GETによる設定変更・User/セッション作成は行わない。Cookieの期限更新は従来どおり本人情報APIで行い、このAPIではSet-Cookieを発行しない。
 
-通常APIのDB権限は設定4テーブルのSELECTのみ。詳細は所有者で絞ったCollectionを起点に、外部キーで所属する配下設定だけを組み立てる。ID差し替え・配下情報の他者混入・空配列・未認証と内部障害の区別を試験する。構造化エラーログは固定項目とし、Cookie・DBエラー・設定全文を含めない。
+この取得経路は設定4テーブルのSELECTを使う。#18で追加する本体INSERTと要求記録の権限は[作成API](post-api-collections.md)を参照する。詳細は所有者で絞ったCollectionを起点に、外部キーで所属する配下設定だけを組み立てる。ID差し替え・配下情報の他者混入・空配列・未認証と内部障害の区別を試験する。構造化エラーログは固定項目とし、Cookie・DBエラー・設定全文を含めない。
