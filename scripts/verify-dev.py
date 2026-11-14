@@ -91,6 +91,7 @@ class DevLifecycle(unittest.TestCase):
         process = self.launch()
         backend, frontend = self.ready('backend-dev'), self.ready('frontend-dev')
         self.assertEqual(self.calls()[0], 'db-up')
+        self.assertEqual((self.root / '.local').stat().st_mode & 0o077, 0)
         self.assertEqual(set(self.calls()[1:]), {'backend-dev', 'frontend-dev'})
         process.send_signal(signal.SIGINT)
         self.assertEqual(process.wait(timeout=20), 0)

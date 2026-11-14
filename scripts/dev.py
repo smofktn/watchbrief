@@ -94,7 +94,7 @@ def main():
     parser.add_argument('--make', default=os.environ.get('WATCHBRIEF_DEV_MAKE', 'make'))
     args = parser.parse_args()
     local = ROOT / '.local'
-    local.mkdir(exist_ok=True)
+    local.mkdir(mode=0o700, exist_ok=True)
     # Keep the file after exit: unlinking a flock file can allow two lock holders.
     with (local / 'dev.lock').open('a') as lock:
         try:
