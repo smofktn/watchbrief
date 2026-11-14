@@ -168,6 +168,16 @@ HTTPSは接続元の回線・IPを限定せず利用する方針に合意した�
 
 編集を含むAPIには[goose版10](database-design.md#collection本体の編集issue-74)までの明示適用が必要であり、通常起動へbootstrap/migrationを追加しない。初回DBは空の専用環境から構築し、開発DBの実データをコピーしない。手動更新・切り戻しではアプリとDBの互換性を別々に確認し、版10のDownを通常の切り戻しとして扱わない。具体的な配置・ビルド・DB導入・Secret注入・HTTPS・起動管理の方式は未決定のままとする。`make dev` とVite開発サーバーはローカル開発用であり、本番配信・systemdの代わりに使わない。
 
+### AWS運用者のログイン（Issue #21・合意済み）
+
+AWSを構築・運用する人の通常ログインにIAM Identity Centerを採用する。利用者はIAMユーザー方式との違いを具体例・図で検討し、Identity Centerを選択した。rootユーザーは初期設定・rootが必要な管理操作用に分け、日常の構築には作業用ユーザーと必要な権限のロールを使う。IAMユーザー方式の新規作成や長期アクセスキーの発行は今回の進め方に含めない。用語・認証フロー・比較理由は[Issue #21の初学者向け図解](https://github.com/smofktn/watchbrief/issues/21#issuecomment-6881276895)を参照する。
+
+AWSアカウントへのアクセスには[AWS Organizationsの管理アカウントに置く組織インスタンス](https://docs.aws.amazon.com/singlesignon/latest/userguide/identity-center-instances.html)が必要。アプリ向けのアカウントインスタンスと混同しない。[権限セット](https://docs.aws.amazon.com/singlesignon/latest/userguide/permissionsetsconcept.html)に操作権限を定義してユーザー/グループ・対象AWSアカウントへ割り当て、対応するIAMロールをIdentity Centerに管理させる。人の認証とAWSで許可する操作を分け、管理者権限と通常の確認・構築権限の具体範囲を設定前に確認する。
+
+Terraform/CDK等のローカル操作には、作業用ユーザーの[SSOプロファイルと一時認証](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)を使う方針とし、採用するツール・SDK版との互換性を導入時に確認する。運用者の認証情報をGitやEC2のアプリへ配布しない。人のAWSログインは、EC2に付けるIAMロール、OS/DB権限、SSH鍵、WatchBriefのアプリ認証を置き換えない。rootへ登録したMFAが作業用ユーザーへ自動継承されるとは扱わない。
+
+Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。インスタンスのリージョン・構成、ID管理元、MFA・復旧、ユーザー/グループ・権限セット・セッション時間、Organizationsの既存状態と有効化対象はまだ未確認・未決定。方式採用だけで組織作成・有効化・有料リソース追加を実施せず、画面上の対象・効果・料金・Secretの扱いを説明して合意後に進める。現時点では設計合意であり、設定済み・ログイン検証済みを意味しない。
+
 ### 初回構成のたたき台（Issue #21・未採用）
 
 以下はレビュー用の具体案であり、構成・料金の採用やAWS操作の承認ではない。HTTPSを回線限定なしで本人が利用する合意は前節を参照する。既存AWSアカウント・リソース・ドメイン・DNSは未確認。実値を取得する前にAMI ID、AZ、CIDR、公開ホスト名、管理IPを固定しない。
