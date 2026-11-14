@@ -401,3 +401,7 @@ Job.user_idはNOT NULL/RESTRICT、Collection参照はSET NULL（NULLは完了履
 APIへcollectionsのid・user_id・name・research_instruction・initial_lookback_mode・initial_lookback_days・display_orderの列INSERTと、要求記録のSELECT/INSERTだけを追加する。enabled・作成更新日時はDB既定値でありINSERTを許可しない。設定のUPDATE/DELETE、配下への書込、要求記録のUPDATE/DELETE、User更新・DDL・ロール管理は追加しない。所有者の行制限はAPIのセッション由来条件で行い、DB接続権限だけでUser分離を保証すると解釈しない。
 
 版9のDownは要求記録を削除するため通常操作に含めない。新規保存の[API契約](API仕様/post-api-collections.md)と[検証入口](../backend/README.md#collection本体の新規保存issue-18)を参照する。旧版3のSELECT-onlyは当時の範囲として保持する。
+
+## Collection本体の編集（Issue #74・設計中）
+
+先行更新の検出と本体3項目の保存を一体として扱い、競合した古い入力は保存しない方針に合意した。具体的な版の物理型・列追加、更新要求の保存構造、ロック、UPDATE列権限とmigrationは未決定とする。版9の作成要求記録・input_digestは元の作成入力に対応し、現在設定の編集に合わせて更新しない。現在設定の他の列・配下設定・生成履歴へ編集の副作用を及ぼさない。
