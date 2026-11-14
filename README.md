@@ -24,7 +24,7 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
 
 最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
@@ -102,3 +102,5 @@ main向けPRではGitHub Actionsが既存の `make check`・`make build` を自�
 パスワード再設定は `make password-reset LOGIN_ID=fictional_user` で行います。初期設定・既存DBへの専用ロール追加と試験は[再設定の詳細](docs/password-reset.md)を参照してください。
 
 Collection本体の新規作成は一覧の「新規作成」から操作します。事前に版9の明示migrationが必要です。通常DBを停止しない追加検証は `make verify-collection-creation`。範囲と制限は[Backend手順](backend/README.md#collection本体の新規保存issue-18)を参照してください。
+
+Collection本体の編集は版10の明示migration後、停止中の詳細から操作します。事前の隔離検証は `make verify-collection-update`。[操作・検証手順](backend/README.md#collection本体の編集issue-74)を参照してください。

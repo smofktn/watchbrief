@@ -114,7 +114,7 @@ try {
     pending.set(id, { resolve, reject })
     browser.stdio[3].write(JSON.stringify({ id, method, params, sessionId }) + '\0')
   })
-  timeout = setTimeout(failBrowser, 180000)
+  timeout = setTimeout(failBrowser, fixture.verify_update ? 360000 : 180000)
   const { targetId } = await send('Target.createTarget', { url: 'about:blank' })
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
   const call = (method, params) => send(method, params, sessionId)
@@ -224,11 +224,18 @@ try {
     const { verifyCreation } = await import('./verify-collection-creation-browser.mjs')
     issued.push(await verifyCreation({ call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
   }
+  if (fixture.verify_update) {
+    phase = 'collection-update'
+    const { verifyUpdate } = await import('./verify-collection-update-browser.mjs')
+    issued.push(await verifyUpdate({ checkpoint: value => { phase = 'collection-update-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
   console.log('Browser: protected Report return, safe fallback, own settings/plain text Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
+  const location = /verify-collection-update-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)
   process.exitCode = 1

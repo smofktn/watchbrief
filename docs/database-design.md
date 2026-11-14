@@ -402,6 +402,14 @@ APIへcollectionsのid・user_id・name・research_instruction・initial_lookbac
 
 版9のDownは要求記録を削除するため通常操作に含めない。新規保存の[API契約](API仕様/post-api-collections.md)と[検証入口](../backend/README.md#collection本体の新規保存issue-18)を参照する。旧版3のSELECT-onlyは当時の範囲として保持する。
 
-## Collection本体の編集（Issue #74・設計中）
+## Collection本体の編集（Issue #74）
 
-先行更新の検出と本体3項目の保存を一体として扱い、競合した古い入力は保存しない方針に合意した。具体的な版の物理型・列追加、更新要求の保存構造、ロック、UPDATE列権限とmigrationは未決定とする。版9の作成要求記録・input_digestは元の作成入力に対応し、現在設定の編集に合わせて更新しない。現在設定の他の列・配下設定・生成履歴へ編集の副作用を及ぼさない。
+版と更新要求番号で競合検出と再試行を区別する方式に合意した。実装判断としてgoose版10でcollections.versionをbigint・NOT NULL・既定1・正数CHECKとして追加する。既存行は版1から開始する。JSONは精度を失わない十進文字列で返し、updated_atは更新日時として維持して競合照合には使わない。
+
+collection_update_requestsはuser_id（usersへRESTRICT）、request_key（小文字UUID v4）、collection_id（collectionsへSET NULL）、input_digest（32byte bytea）、result_version（bigint・2以上）を持ち、主キーは(user_id,request_key)。索引は主キーだけとし、現在の検索は本人＋番号による。ID・編集元版・本体4項目の固定構造JSONのSHA-256を記録し、設定全文を複製しない。作成要求とは別に保持し、今回の段階では期限・自動消去を追加しない。削除後の記録からCollectionを復活させない。
+
+既存作成のhashtextextended(user_id,18)のtransaction advisory lockを共有し、同じUserの要求記録と保存を直列化する。Read Committedで待機解除後に先行保存を読み、所有行確認→保存済み要求照合→停止状態/版照合→条件付きUPDATE→要求INSERT→commitとする。更新版・updated_at・本体と要求記録は一体で確定する。同じ要求の再送は要求記録の保存結果を返すだけとし、新しい現在値や版を変更しない。bigint上限を超える更新は全rollbackとする。将来の更新経路は版増加とこの排他との整合を守る。
+
+APIに追加する権限は、本体のname・research_instruction・initial_lookback_mode・initial_lookback_days・version・updated_atの列UPDATEと更新要求記録のSELECT/INSERTだけ。enabled・display_order・所有者・作成日時・ID、配下設定、生成履歴、作成要求記録には更新権限を与えない。所有者条件は引き続きアプリが担い、DB権限だけでUser分離を保証しない。元の作成要求のinput_digestは編集後も元の入力に対応する。
+
+版10のDownは版と再試行記録を削除するため通常操作に含めない。旧版は編集せず、通常起動への自動migrationを追加しない。[更新API](API仕様/patch-api-collections.md)と[検証入口](../backend/README.md#collection本体の編集issue-74)を参照する。

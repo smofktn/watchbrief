@@ -67,3 +67,7 @@ APIには既存の分類済みラベルを残す。実DB停止中の設定・Rep
 `make verify-collection-creation` は同じ隔離runnerを使い、新規作成・安全な再試行のAPI/ブラウザ検証を追加する。現在のrunnerはgooseディレクトリの最新番号まで明示migrationが適用されたことを確認する。通常の `verify-issue17` は従来の認証・取得・復旧確認を維持する。
 
 範囲、ブラウザでの応答破棄の位置、要求番号を失った後の制限は[Backendの作成検証](../backend/README.md#collection本体の新規保存issue-18)を参照する。下書きのログアウト消去・遅延応答破棄はVitestでも確認し、実ブラウザ・実DBと区別する。
+
+## Collection本体編集の追加検証（Issue #74）
+
+`make verify-collection-update` は既存隔離runnerで作成回帰に加えて更新・並行競合・原子的保存・再試行・履歴不変とChromiumを検証する。通常DBの状態を維持し、migrationを自動起動へ追加しない。前提・確認範囲・応答喪失の注入位置は[Backend手順](../backend/README.md#collection本体の編集issue-74)を参照する。APIの版10が必要で、既存DBへの明示適用は隔離検証とは別の操作とする。

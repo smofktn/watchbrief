@@ -1,9 +1,24 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
+import CollectionEditor from './CollectionEditor.vue'
 import Button from 'primevue/button'
 import { RouterLink, useRoute } from 'vue-router'
 import { useCollections } from './useCollections'
+const editing = ref(false)
+const startEditing = async () => {
+  editing.value = true
+  await nextTick()
+  document.getElementById('edit-title')?.focus()
+}
+const finishEditing = async () => {
+  editing.value = false
+  await load()
+  await nextTick()
+  document.getElementById('detail-title')?.focus()
+}
 const route = useRoute()
 const { state, message, data, load } = useCollections()
+watch(() => route.path, () => { editing.value = false }, { flush: 'sync' })
 </script>
 
 <template>
@@ -22,8 +37,10 @@ const { state, message, data, load } = useCollections()
         <span>（{{ collection.enabled ? 'ON' : 'OFF' }}）</span>
       </li></ul>
     </template>
+    <CollectionEditor v-else-if="editing && state === 'ready' && data?.selected" :collection="data.selected" @saved="finishEditing" @cancel="finishEditing" />
     <article v-else-if="state === 'ready' && data && data.selected">
-      <h3>{{ data.selected.name }}</h3>
+      <h3 id="detail-title" tabindex="-1">{{ data.selected.name }}</h3>
+      <Button v-if="!data.selected.enabled" label="編集" @click="startEditing" />
       <p>状態：{{ data.selected.enabled ? 'ON' : 'OFF' }}</p>
       <p>調査方針：{{ data.selected.research_instruction || '未設定' }}</p>
       <p>初回の更新確認：{{ data.selected.initial_lookback_mode === 'ai' ? 'AIに任せる' : `${data.selected.initial_lookback_days}日前から` }}</p>

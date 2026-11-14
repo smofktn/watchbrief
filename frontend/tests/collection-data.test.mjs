@@ -5,7 +5,7 @@ import { collectionIDFromPath, loginDestination, safeReturnPath } from '../src/n
 
 const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const summary = { id, name: '架空の設定', enabled: false, display_order: 0 }
-const detail = { ...summary, research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
+const detail = { ...summary, version: '1', research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
 
 test('Collection routes permit only canonical ULID paths inside the application', () => {
   assert.equal(safeReturnPath('/collections'), '/collections')
@@ -23,4 +23,11 @@ test('Malformed successful responses are rejected before rendering nested settin
   for (const bad of [null, {}, { ...summary, id: 'invalid' }, { ...detail, targets: [null] }, { ...detail, targets: [{ id, name: 'x', enabled: true, instruction: '', display_order: 0, sources: null }] }, { ...detail, schedule: {} }, { ...detail, initial_lookback_mode: 'days', initial_lookback_days: null }]) {
     assert.equal(isCollection(bad), false)
   }
+})
+
+test('Collection revision is a canonical positive bigint string', () => {
+  for (const version of ['', '0', '01', '+1', '1.0', '9223372036854775808', 1, null, undefined]) {
+    assert.equal(isCollection({ ...detail, version }), false)
+  }
+  assert.equal(isCollection({ ...detail, version: '9223372036854775807' }), true)
 })
