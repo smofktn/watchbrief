@@ -166,6 +166,43 @@ DB用EBSは正本データの保存先であり、バックアップではない
 
 編集を含むAPIには[goose版10](database-design.md#collection本体の編集issue-74)までの明示適用が必要であり、通常起動へbootstrap/migrationを追加しない。初回DBは空の専用環境から構築し、開発DBの実データをコピーしない。手動更新・切り戻しではアプリとDBの互換性を別々に確認し、版10のDownを通常の切り戻しとして扱わない。具体的な配置・ビルド・DB導入・Secret注入・HTTPS・起動管理の方式は未決定のままとする。`make dev` とVite開発サーバーはローカル開発用であり、本番配信・systemdの代わりに使わない。
 
+### 初回構成のたたき台（Issue #21・未採用）
+
+以下はレビュー用の具体案であり、構成・料金・公開範囲の採用やAWS操作の承認ではない。既存AWSアカウント・リソース・ドメイン・DNSは未確認。実値を取得する前にAMI ID、AZ、CIDR、公開ホスト名、管理IPを固定しない。公開対象者・HTTPSの接続元範囲は利用者と確認する。
+
+| 要素 | 提案 | 理由・確認が残ること |
+|---|---|---|
+| OS・CPU | 標準Ubuntu Server 24.04 LTS、amd64 | [標準セキュリティ保守は2029年5月まで](https://documentation.ubuntu.com/release-notes/24.04/)。既存のLinux amd64版goose導入と合わせやすい。26.04 LTS等との比較と、構築時の[Canonical公式AMI・所有者確認](https://ubuntu.com/aws/docs/aws-how-to/instances/find-ubuntu-images/)は別途必要 |
+| EC2 | 東京のt3.small（2 vCPU・2 GiB）、On-Demand、CPU creditはStandard | 小規模・本人検証用の出発点。容量保証ではなくメモリ/CPUを実測する。Standardは追加CPU credit課金を避ける一方、credit不足時にCPU性能が制限される。[仕様](https://aws.amazon.com/ec2/instance-types/t3/)・[Standardの動作](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html)。アカウント全体の既定値は変更しない |
+| EBS | gp3、OS 20 GiB＋DB 10 GiB、追加性能指定なし | 最小検証用の容量案。双方の暗号化とDB用保持の合意を維持。ファイルシステム・UUIDマウント・未マウント時の起動拒否を具体化し、空き容量を検証する |
+| PostgreSQL | OSへPostgreSQL 18を導入し、systemdで管理 | [PGDGはUbuntu 24.04に対応](https://www.postgresql.org/download/linux/ubuntu/)。ローカルComposeの配置を本番へ流用せず、パッケージ版・導入元・更新方法・初期cluster自動作成の抑止を確認する。空のDB用EBSへの初回作成は明示操作とする |
+| ビルド・配置 | EC2外でLinux amd64のGoバイナリとVite静的成果物を作り、SSHで版別配置 | 常用EC2にNode/Goのビルド負荷を持ち込まず、APIと画面を同じ版として切り替える。バージョン/チェックサム、配下assetの保持、DB互換性、前版への切り戻しの具体手順は未決定 |
+| Secret | 保護されたroot所有ファイルからsystemd credentialsで必要なプロセスへ渡す | 現APIの秘密ファイル読込を利用する案。採否・所有者/mode・管理CLIへの渡し方・交換と再起動を別途合意・検証する。#23のSecrets Manager移行と分ける |
+| DNS・TLS | 所有ドメイン/DNSを確認後に決定 | Route 53は見積もり上の比較例に限る。HTTPS接続元制限と証明書の発行/自動更新が両立する方式を選ぶ。IP制限のためにアプリのCookie/CSRFを緩めない |
+| 運用 | API・DB・nginxの状態とHTTPS疎通、journal/nginx/DBログの容量上限、TLS更新確認を手順化 | #21の配備・復旧確認に必要な範囲。本格的な集約・通知は#7/#22、CDは#29、IaC選定は#30と分担し、有料監視を採用済みにしない |
+
+#### 料金の比較例（未採用・構築前に再確認）
+
+2026-11-14に[AWS公式の東京リージョン料金表](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/ap-northeast-1/index.csv)からLinux・Shared・ソフトウェア追加なし・On-Demandの単価とgp3容量単価を読み取り確認した（抽出行の適用日2026-11-01）。無料枠・credit・割引は差し引かず、USD・税別、1か月30日＝720時間、EC2を1台とEIPを1つ、EBS合計30 GiBを保持する仮定とする。
+
+| 費目 | 単価・仮定 | 30日常時稼働の例 |
+|---|---|---|
+| EC2 t3.small | $0.0272/時間 × 720 | $19.584 |
+| OS用gp3 | $0.096/GiB月 × 20 | $1.92 |
+| DB用gp3 | $0.096/GiB月 × 10 | $0.96 |
+| 公開IPv4/EIP | [$0.005/時間](https://aws.amazon.com/vpc/pricing/) × 720。未関連付け・停止中も保持課金 | $3.60 |
+| 上記小計 | DNS/ドメイン・転送・追加サービス等を含まない | 約$26.06 |
+| Route 53を選ぶ場合のDNS例 | [public hosted zone $0.50/月＋標準照会$0.40/100万件](https://aws.amazon.com/route53/pricing/)。zoneは月途中も月額 | 別途$0.50＋照会分 |
+| ドメイン | 所有/新規購入、TLD、登録・更新価格を未確認 | 別途・未見積もり |
+| 転送 | [インターネット向け送信の月100 GB枠はサービス/リージョン横断の合算](https://aws.amazon.com/ec2/pricing/on-demand/)。アカウントの他用途・超過単価/量を未確認 | 別途・総額未確定 |
+| KMS・監視等 | 必要な操作/方式/量が未確定。CloudWatch Logs/Agent/Alarm/SNS等の追加は未採用 | 別途・必要時に見積もり |
+
+CPU比較の同条件単価はt3a.smallが$0.0245/時間（720時間で$17.64）、ARMのt4g.smallが$0.0216/時間（$15.552）。料金差と、導入ツール/成果物のアーキテクチャ確認・再検証の手間を分けて比較する。Standardで長時間のCPU使用が必要になれば、制限を観測してサイズや方式を見直し、無断でUnlimitedへ変更しない。
+
+EC2を100時間だけ動かし、EBSとEIPを30日保持する同条件例は$2.72＋$2.88＋$3.60＝$9.20（DNS例を加えると$9.70＋照会、その他別途）。EC2を停止し続けてもEBSとEIPを同じ容量/数で保持すれば$6.48/月が残る（DNS例を加えると$6.98＋照会、その他別途）。削除時はOS用EBSの扱い、DB用EBSの保持、EIP解放/DNSへの影響、ドメインの更新を別々に判断する。これらは総額や上限の保証ではなく、構築・公開・課金前に不足項目を具体化して承認を得る。
+
+サービス料金とは別に、アプリ側の版識別・成果物作成と検証、インフラ側のOS/DB/nginx/systemd/Secret/TLSの設定、運用時のパッチ・容量・証明書・更新/切り戻し、初回の学習の手間がある。今回の案はそれらを経験するためのもので、マネージドDB・配備自動化・監視サービスへの移行を先に実装するものではない。
+
 ## 構築・運用の設計案
 
 この節はIssue #11の設計成果物として、これまで合意した構成を運用へつなぐ案をまとめる。個別に合意していないサービス・設定・配置は提案であり、構築済み・採用確定とは扱わない。細かな数値は一つずつ今決めず、下記の引き継ぎ表に集約する。
