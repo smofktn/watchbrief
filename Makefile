@@ -1,14 +1,20 @@
 include make/common.mk
 
+# Pass the Make executable without marking dev as a recursive recipe: make -n
+# must print the supervisor command rather than execute it.
+export WATCHBRIEF_DEV_MAKE := $(MAKE)
+
 FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test frontend-coverage frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-coverage backend-test-db backend-benchmark-password backend-check-input
 BACKEND_DIRECT := verify-collection-update verify-collection-creation verify-issue17 password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
-.PHONY: help runtime-install runtime-versions build test check coverage $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
+.PHONY: help dev verify-dev runtime-install runtime-versions build test check coverage $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
 
 help:
 	@printf '%s\n' \
 	  'WatchBrief — ルートからの操作' \
+	  '  make dev                           DB・API・画面をまとめて起動（Ctrl+CでAPI・画面終了）' \
+	  '  make verify-dev                    一括起動の順序・中断・異常終了・多重起動を検証' \
 	  '  make frontend-dev / backend-dev     画面・APIを別端末で起動' \
 	  '  make frontend-install              Frontend依存を導入' \
 	  '  make backend-deps                  Go依存を取得' \
@@ -49,6 +55,12 @@ $(BACKEND_COMMANDS): backend-%:
 $(BACKEND_DIRECT):
 	+@$(MAKE) --no-print-directory -C backend $@
 
+dev:
+	@$(PYTHON) scripts/dev.py
+
+verify-dev:
+	@$(PYTHON) scripts/verify-dev.py
+
 runtime-install:
 	asdf install
 
@@ -59,7 +71,7 @@ build: frontend-build backend-build
 
 test: backend-test frontend-test
 
-check: backend-test frontend-typecheck frontend-test
+check: verify-dev backend-test frontend-typecheck frontend-test
 	git diff --check
 
 coverage: backend-coverage frontend-coverage

@@ -25,9 +25,9 @@ make seed-reports LOGIN_ID=fictional_user
 
 `db-bootstrap` は空の新規環境で1回だけ。既存ロールを上書きしない。初期管理・API・作成者・migration・再設定の秘密はGit対象外 `.local/` の600ファイルに分離され、値を表示しない。アプリのパスワードは管理CLIの端末へ2回非表示入力し、引数・Make変数・パイプへ渡さない。架空専用パスワードを使う。seedは外部へ接続せず停止中設定と保存履歴を原子的に追加し、再実行で既存値を上書きしない。実際の設定や本文をfixtureへ流用しない。
 
-別々の端末で `make backend-dev` と `make frontend-dev` を起動する。`http://127.0.0.1:5173/reports` を開き、ログイン後に同じ画面へ戻ること、本人情報、自分の設定とReport詳細を確認する。本文中のHTMLはテキストとして表示する。「ログアウト」で入力・個人データが消え、再読み込みでもログインフォームになる。管理者による再設定は `make password-reset LOGIN_ID=fictional_user`。対象Userの全セッションを失効する。
+ルートの `make dev` でDBの起動完了を待ってからAPI・画面を一括起動する。初期設定・依存導入・migrationは自動実行しない。個別起動する場合は、別々の端末で `make backend-dev` と `make frontend-dev` を使う。`http://127.0.0.1:5173/reports` を開き、ログイン後に同じ画面へ戻ること、本人情報、自分の設定とReport詳細を確認する。本文中のHTMLはテキストとして表示する。「ログアウト」で入力・個人データが消え、再読み込みでもログインフォームになる。管理者による再設定は `make password-reset LOGIN_ID=fictional_user`。対象Userの全セッションを失効する。
 
-停止は各アプリ端末でCtrl+C、DBは `make db-stop`。再開は `make db-up` とアプリ起動だけでよく、bootstrapを繰り返さない。DB停止でデータは消えない。既存の3ロール環境を更新する場合だけ[再設定ロールの追加手順](local-postgresql.md#再設定用の専用ロール追加issue-58)を使う。問題があってもreset・volume削除・Down・版管理行の手編集を復旧手順にしない。
+一括起動の停止はCtrl+Cで、今回起動したAPI・画面とその子プロセスだけを終了する。個別起動の場合は各端末でCtrl+C。DBは残り、停止は `make db-stop`。再開は `make dev`（個別起動なら `make db-up` と各アプリ起動）だけでよく、bootstrapを繰り返さない。DB停止でデータは消えない。既存の3ロール環境を更新する場合だけ[再設定ロールの追加手順](local-postgresql.md#再設定用の専用ロール追加issue-58)を使う。問題があってもreset・volume削除・Down・版管理行の手編集を復旧手順にしない。
 
 ## 通常環境を止めずに検証する
 
@@ -71,3 +71,7 @@ APIには既存の分類済みラベルを残す。実DB停止中の設定・Rep
 ## Collection本体編集の追加検証（Issue #74）
 
 `make verify-collection-update` は既存隔離runnerで作成回帰に加えて更新・並行競合・原子的保存・再試行・履歴不変とChromiumを検証する。通常DBの状態を維持し、migrationを自動起動へ追加しない。前提・確認範囲・応答喪失の注入位置は[Backend手順](../backend/README.md#collection本体の編集issue-74)を参照する。APIの版10が必要で、既存DBへの明示適用は隔離検証とは別の操作とする。
+
+## 一括起動の監督処理の検証
+
+`make verify-dev` は使い捨ての偽サービスと実際のOSプロセスで、DB待機後の起動、Ctrl+C/TERM、DB起動失敗、片方の終了時の全アプリ停止、孫プロセスの待受終了、多重起動拒否とロック再利用を確認する。通常DB・Dockerを使わず、実API/画面との接続確認とは区別する。監督処理は `.local/dev.lock` のflockで同じ作業フォルダーの一括起動を1つに制限する。終了時は最大12秒待ってから残る子プロセスを強制終了する。SIGKILLやOS停止時の後始末までは保証しない。

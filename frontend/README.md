@@ -4,6 +4,8 @@ Vue・TypeScript・Vite・PrimeVueによるログインフォーム。入力をG
 
 リポジトリルートの `.tool-versions` に従いasdfでNodeを導入した後、このディレクトリで実行する。
 
+DB・API・画面をまとめて起動する場合は、初期設定・明示migration後にリポジトリルートで `make dev` を使う。Ctrl+CでAPIと画面を終了し、DBは残す。詳細は[ルートの起動手順](../README.md#開発コマンド)を参照する。このディレクトリの `make dev` は従来どおり担当アプリだけを起動する。
+
 ```bash
 make install
 make dev

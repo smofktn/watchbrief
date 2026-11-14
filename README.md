@@ -61,15 +61,15 @@ cd watchbrief
 
 リポジトリルートで `make help` を実行すると一覧を確認できます。Frontend・Backend内でも `make help` が使えます。DB操作はBackendのMakefileが担当し、ルートから同名ターゲットへ委譲します。
 
-```bash
-make frontend-dev
-```
-
-別の端末でAPIを起動します。
+初期設定・依存導入・明示migrationが済んだ環境では、次でDBコンテナ・API・画面をまとめて起動できます。
 
 ```bash
-make backend-dev
+make dev
 ```
+
+DBの起動完了を待ち、既存の `backend-dev` と `frontend-dev` を起動します。画面は `http://127.0.0.1:5173`。終了はCtrl+Cで、API・画面とその子プロセスを終了します。片方が異常終了した場合も、もう一方を終了して失敗を返します。DBは残るので、停止するときは `make db-stop` を使ってください。既に別の端末で起動しているアプリは自動終了せず、ポート競合は起動エラーになります。
+
+`make dev` は初期設定・依存導入・migrationを自動実行しません。初回は[構築手順](docs/verification-issue-17.md#初めて起動する)、DB更新時は `make db-up` → `make db-migrate` → `make dev` の順に実行してください。個別起動には、別々の端末で従来どおり `make backend-dev` / `make frontend-dev` も使えます。
 
 架空Userを追加する場合は、DBの初期設定・migration後に実行します。パスワードは端末で2回非表示入力します。
 
@@ -79,7 +79,7 @@ make user-create LOGIN_ID=fictional_user
 
 | 操作 | ルート | Frontend内 | Backend内 |
 |---|---|---|---|
-| 起動 | `make frontend-dev` / `make backend-dev` | `make dev` | `make dev` |
+| 起動 | `make dev`（一括）、`make frontend-dev` / `make backend-dev`（個別） | `make dev` | `make dev` |
 | ビルド | `make build` | `make build` | `make build` |
 | 試験・型検査 | `make check` | `make test` / `make typecheck` | `make test` |
 | Backend coverage | `make backend-coverage` | — | `make coverage` |
