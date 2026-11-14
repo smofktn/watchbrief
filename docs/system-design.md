@@ -902,3 +902,11 @@ Vue/TypeScriptの現用コード全体をV8 coverageの分母に含め、Vitest�
 Frontendは新規ページと専用composableを追加し、既存の単一sessionを使う。送信結果不明では同じ要求番号・本文を維持し、再試行で返された同じIDから詳細を取得する。画面離脱・ログアウトでは下書き消去と遅延応答破棄を行う。保存を認証通過後まで取り消せるとは扱わない。Job・Reportや既存入力スナップショットは変更しない。
 
 通信契約・入力上限と再試行の限界は[作成API](API仕様/post-api-collections.md)、状態・操作は[新規画面](画面仕様/コレクションの新規作成.md)、保存記録と最小権限は[DB設計](database-design.md#collection本体の新規保存issue-18)を参照する。技術的な保存構造・URL・応答は合意範囲を具体化する実装判断として記録する。
+
+## Collection本体の編集（Issue #74）
+
+版番号と更新要求番号による競合検出・同一要求の再試行に合意した。Frontendは既存詳細URLで表示/編集を切り替え、入力と版を引き継ぐ。競合時は下書きを保持して最新値を別途取得し、明示操作で最新値を基に編集し直す。結果不明では元の本文・要求番号で手動再試行する。新規作成とは入力部品・入力検証を共有し、認証は既存の単一sessionを使う。
+
+HTTPのPATCH境界は既存のCSRF・Cookie・厳密JSONを扱い、UpdateCollectionユースケースが所有者・入力を確認する。PostgreSQL adapterは既存作成と共有する本人単位のtransaction advisory lockを取り、所有行・要求記録を確認する。版一致・停止中の条件付きUPDATE、版増加、要求記録をRead Committedの同じtransactionで確定する。再送では元結果だけを返し、現在値を再更新しない。将来の更新も版を進め、同じ要求空間・排他との整合を守る必要がある。
+
+認証・消去・遅延応答破棄と現在設定/生成履歴の境界を維持する。更新は認証通過後に完了し得る。通信契約は[更新API](API仕様/patch-api-collections.md)、保存構造は[DB設計](database-design.md#collection本体の編集issue-74)、利用者操作は[編集画面](画面仕様/コレクション本体の編集.md)を参照する。

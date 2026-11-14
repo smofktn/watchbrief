@@ -8,7 +8,7 @@ import { createAppRouter } from '../src/router'
 const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const otherId = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
 const summary = { id, name: '架空の設定', enabled: false, display_order: 0 }
-const collection = { ...summary, research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
+const collection = { ...summary, version: '1', research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
 const report = { id, collection_name: '架空レポート', scheduled_at: '2026-01-02T00:00:00Z', generated_at: '2026-01-02T00:00:04Z', body_markdown: '<script>bad()</script><img src=x onerror=bad()>', summary_markdown: '', updates_started_at: '2026-01-01T00:00:00Z', updates_ended_at: '2026-01-02T00:00:02Z' }
 const response = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const unauthenticated = () => response({ error: { code: 'unauthenticated' } }, 401)
@@ -583,4 +583,159 @@ test('Collection names containing only Unicode whitespace are rejected before sa
   await click('保存')
   expect(app.find('#collection-name-error').exists()).toBe(true)
   expect(fetch.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(0)
+})
+
+describe('Collection body editing', () => {
+  test('starts from fetched settings, validates, saves with version/key and reloads detail/list', async () => {
+    let current = { ...collection }
+    let sent: RequestInit | undefined
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') {
+        sent = options
+        const body = JSON.parse(options.body as string)
+        current = { ...current, ...body, version: '2' }
+        return response({ id, version: '2' })
+      }
+      return path === '/api/collections' ? response({ collections: [current] }) : response(current)
+    })
+    await click('編集')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe(collection.name)
+    await app.get('#collection-name').setValue('　')
+    await click('保存')
+    expect(app.find('#collection-name-error').exists()).toBe(true)
+    expect(sent).toBeUndefined()
+    await app.get('#collection-name').setValue('編集後')
+    await app.get('#collection-mode').setValue('days')
+    await app.get('#collection-days').setValue('365')
+    await click('保存')
+    expect(app.find('#edit-title').exists()).toBe(false)
+    expect(app.text()).toContain('編集後')
+    expect(app.text()).toContain('365日前から')
+    expect(JSON.parse(sent!.body as string)).toEqual({ name: '編集後', research_instruction: '', initial_lookback_mode: 'days', initial_lookback_days: 365, version: '1' })
+    expect((sent!.headers as Record<string, string>)['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/)
+    await router.push('/collections')
+    await flushPromises()
+    expect(app.text()).toContain('編集後')
+  })
+  test('conflict retains draft, latest failure is retryable, explicit restart adopts latest version', async () => {
+    let attempts = 0
+    let reads = 0
+    const payloads: { version: string; name: string }[] = []
+    const latest = { ...collection, version: '2', name: '別タブの名前' }
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') {
+        payloads.push(JSON.parse(options.body as string))
+        return ++attempts === 1 ? response({ error: { code: 'update_conflict' } }, 409) : response({ id, version: '3' })
+      }
+      ++reads
+      if (reads === 2) { throw new Error('network') }
+      return response(reads === 1 ? collection : latest)
+    })
+    await click('編集')
+    await app.get('#collection-name').setValue('自分の下書き')
+    await click('保存')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('自分の下書き')
+    await click('最新値を確認')
+    expect(app.text()).toContain('最新値を取得できません')
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('別タブの名前')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('自分の下書き')
+    await click('最新値で編集し直す')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('別タブの名前')
+    await app.get('#collection-instruction').setValue('手動で変更')
+    await click('保存')
+    expect(payloads.map(p => p.version)).toEqual(['1', '2'])
+  })
+  test('unknown result locks input; rejected retry retains exact request until successful replay', async () => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method !== 'PATCH') { return response(collection) }
+      attempts.push(options)
+      if (attempts.length === 1) { throw new Error('lost response') }
+      return attempts.length === 2 ? response({ error: { code: 'invalid_request' } }, 400) : response({ id, version: '2' })
+    })
+    await click('編集')
+    await app.get('#collection-name').setValue('保持')
+    await click('保存')
+    expect(app.get('fieldset').attributes('disabled')).toBeDefined()
+    await click('同じ内容で再試行')
+    expect(app.text()).toContain('最初の保存結果は未確認')
+    expect(app.get('fieldset').attributes('disabled')).toBeDefined()
+    await click('同じ内容で再試行')
+    expect(attempts.map(a => a.body)).toEqual([attempts[0].body, attempts[0].body, attempts[0].body])
+    expect(attempts.map(a => a.headers)).toEqual([attempts[0].headers, attempts[0].headers, attempts[0].headers])
+    expect(app.find('#edit-title').exists()).toBe(false)
+  })
+  test.each([[400, 'invalid_request', false], [403, 'csrf_rejected', false], [500, 'internal_error', true], [200, '', true], [404, 'not_found', true], [409, 'update_request_conflict', true]])('save %s preserves input with correct edit lock', async (status, code, locked) => {
+    const { app } = await start(`/collections/${id}`, (path, options) => path === '/api/me' ? me() : options.method === 'PATCH' ? response({ error: { code } }, status) : response(collection))
+    await click('編集')
+    await app.get('#collection-name').setValue('保持する入力')
+    await click('保存')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('保持する入力')
+    expect(app.get('fieldset').attributes('disabled') !== undefined).toBe(locked)
+  })
+  test('expired save clears draft and returns to same detail after login', async () => {
+    const { app, router } = await start(`/collections/${id}`, (path, options) => path === '/api/me' ? me() : options.method === 'PATCH' ? unauthenticated() : response(collection))
+    await click('編集')
+    await app.get('#collection-name').setValue('消去する入力')
+    await click('保存')
+    expect(router.currentRoute.value.fullPath).toBe(`/login?return_to=%2Fcollections%2F${id}`)
+    expect(app.find('#collection-name').exists()).toBe(false)
+    expect(app.text()).not.toContain('消去する入力')
+  })
+  test.each(['logout', 'navigate', 'cancel'])('%s discards pending save and late success', async (action) => {
+    const pending = deferred<Response>()
+    let signal: AbortSignal | null | undefined
+    let writes = 0
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { ++writes; signal = options.signal; return pending.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return path === '/api/collections' ? response({ collections: [] }) : response(collection)
+    })
+    await click('編集')
+    await app.get('#collection-name').setValue('遅い応答の入力')
+    await app.get('form').trigger('submit')
+    await app.get('form').trigger('submit')
+    expect(writes).toBe(1)
+    if (action === 'logout') { await click('ログアウト') }
+    else if (action === 'cancel') { await click('詳細へ戻る') }
+    else { await router.push('/collections'); await flushPromises() }
+    expect(signal?.aborted).toBe(true)
+    pending.resolve(response({ id, version: '2' }))
+    await flushPromises()
+    expect(app.find('#edit-title').exists()).toBe(false)
+    expect(app.text()).not.toContain('遅い応答の入力')
+    expect(localStorage.length + sessionStorage.length).toBe(0)
+  })
+  test('enabled collection has no edit action', async () => {
+    const { app } = await start(`/collections/${id}`, (path) => path === '/api/me' ? me() : response({ ...collection, enabled: true }))
+    expect(app.findAll('button').some(b => b.text() === '編集')).toBe(false)
+  })
+})
+
+test('editing timeout aborts only its request and preserves the exact retry; inconsistent success is uncertain', async () => {
+  const attempts: RequestInit[] = []
+  const { app } = await start(`/collections/${id}`, (path, options) => {
+    if (path === '/api/me') { return me() }
+    if (options.method !== 'PATCH') { return response(collection) }
+    attempts.push(options)
+    if (attempts.length > 1) { return response({ id, version: '1' }) }
+    return new Promise<Response>((_, reject) => { options.signal?.addEventListener('abort', () => reject(new Error('timeout')), { once: true }) })
+  })
+  await click('編集')
+  vi.useFakeTimers()
+  await app.get('form').trigger('submit')
+  await vi.advanceTimersByTimeAsync(15_000)
+  await flushPromises()
+  expect(attempts[0].signal?.aborted).toBe(true)
+  expect(app.get('fieldset').attributes('disabled')).toBeDefined()
+  await click('同じ内容で再試行')
+  expect(attempts[1].body).toBe(attempts[0].body)
+  expect(attempts[1].headers).toEqual(attempts[0].headers)
+  expect(app.find('#edit-title').exists()).toBe(true)
+  expect(app.text()).toContain('保存結果を確認できません')
 })

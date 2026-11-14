@@ -4,6 +4,8 @@ Vue・TypeScript・Vite・PrimeVueによるログインフォーム。入力をG
 
 リポジトリルートの `.tool-versions` に従いasdfでNodeを導入した後、このディレクトリで実行する。
 
+DB・API・画面をまとめて起動する場合は、初期設定・明示migration後にリポジトリルートで `make dev` を使う。Ctrl+CでAPIと画面を終了し、DBは残す。詳細は[ルートの起動手順](../README.md#開発コマンド)を参照する。このディレクトリの `make dev` は従来どおり担当アプリだけを起動する。
+
 ```bash
 make install
 make dev
@@ -93,3 +95,11 @@ make coverage
 新規ページは `pages/CollectionCreatePage.vue`、下書き・保存・要求番号・再試行・遅延応答破棄は `features/collections/useCollectionCreation.ts` が担当し、既存の単一sessionを共有する。結果不明時は同じ要求番号・同じ本文を再送するため、入力を保持して編集を止める。画面離脱・再読み込み後は一覧で確認し、下書きや番号を永続保存しない。[画面仕様](../docs/画面仕様/コレクションの新規作成.md)と[API](../docs/API仕様/post-api-collections.md)を参照する。
 
 `make test` は入力、保存成功、初回期間、400/401/403/409、500/不正成功/通信失敗後の同一要求再送、二重送信、ログアウトと遅延応答を確認する。実ブラウザ・実DBはルートの `make verify-collection-creation` で別に確認する。配下の編集やMarkdown表示まで完成したことを意味しない。
+
+## Collection本体の編集（Issue #74）
+
+停止中Collectionの詳細URLで「編集」を押す。取得済みの本体3項目を変更し、保存後は詳細を再取得する。競合時は下書きを保持し、「最新値を確認」→比較→「最新値で編集し直す」で最新値へ入力を置き換え、必要な変更を再入力する。結果不明では編集を止め、同じ本文・要求番号で手動再試行する。離脱・ログアウト等で破棄後は詳細で現在値を確認する。
+
+`CollectionFields.vue` と `form.ts` は作成/編集の入力部品・検証を共有し、通信と状態処理は各composableが担う。版と再試行の記録はAPI/DBが担当する。詳細は[編集画面](../docs/画面仕様/コレクション本体の編集.md)と[更新API](../docs/API仕様/patch-api-collections.md)。版10を明示適用したAPIが必要で、画面URLはAPIのAPP_ORIGINと一致させる。既定は `http://127.0.0.1:5173`。
+
+`make frontend-test` / `make check` のVitestと、ルートの `make verify-collection-update` の隔離実DB/Chromiumを使う。前者の応答注入と後者の実保存・実DB停止を区別し、実行結果は#74/PRへ記録する。未保存変更確認は#42、配下CRUD等は#18の残りとして維持する。

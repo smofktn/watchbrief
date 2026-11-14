@@ -24,7 +24,7 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
 
 最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
@@ -61,15 +61,15 @@ cd watchbrief
 
 リポジトリルートで `make help` を実行すると一覧を確認できます。Frontend・Backend内でも `make help` が使えます。DB操作はBackendのMakefileが担当し、ルートから同名ターゲットへ委譲します。
 
-```bash
-make frontend-dev
-```
-
-別の端末でAPIを起動します。
+初期設定・依存導入・明示migrationが済んだ環境では、次でDBコンテナ・API・画面をまとめて起動できます。
 
 ```bash
-make backend-dev
+make dev
 ```
+
+DBの起動完了を待ち、既存の `backend-dev` と `frontend-dev` を起動します。画面は `http://127.0.0.1:5173`。終了はCtrl+Cで、API・画面とその子プロセスを終了します。片方が異常終了した場合も、もう一方を終了して失敗を返します。DBは残るので、停止するときは `make db-stop` を使ってください。既に別の端末で起動しているアプリは自動終了せず、ポート競合は起動エラーになります。
+
+`make dev` は初期設定・依存導入・migrationを自動実行しません。初回は[構築手順](docs/verification-issue-17.md#初めて起動する)、DB更新時は `make db-up` → `make db-migrate` → `make dev` の順に実行してください。個別起動には、別々の端末で従来どおり `make backend-dev` / `make frontend-dev` も使えます。
 
 架空Userを追加する場合は、DBの初期設定・migration後に実行します。パスワードは端末で2回非表示入力します。
 
@@ -79,7 +79,7 @@ make user-create LOGIN_ID=fictional_user
 
 | 操作 | ルート | Frontend内 | Backend内 |
 |---|---|---|---|
-| 起動 | `make frontend-dev` / `make backend-dev` | `make dev` | `make dev` |
+| 起動 | `make dev`（一括）、`make frontend-dev` / `make backend-dev`（個別） | `make dev` | `make dev` |
 | ビルド | `make build` | `make build` | `make build` |
 | 試験・型検査 | `make check` | `make test` / `make typecheck` | `make test` |
 | Backend coverage | `make backend-coverage` | — | `make coverage` |
@@ -102,3 +102,5 @@ main向けPRではGitHub Actionsが既存の `make check`・`make build` を自�
 パスワード再設定は `make password-reset LOGIN_ID=fictional_user` で行います。初期設定・既存DBへの専用ロール追加と試験は[再設定の詳細](docs/password-reset.md)を参照してください。
 
 Collection本体の新規作成は一覧の「新規作成」から操作します。事前に版9の明示migrationが必要です。通常DBを停止しない追加検証は `make verify-collection-creation`。範囲と制限は[Backend手順](backend/README.md#collection本体の新規保存issue-18)を参照してください。
+
+Collection本体の編集は版10の明示migration後、停止中の詳細から操作します。事前の隔離検証は `make verify-collection-update`。[操作・検証手順](backend/README.md#collection本体の編集issue-74)を参照してください。

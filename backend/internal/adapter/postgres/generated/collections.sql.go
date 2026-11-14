@@ -48,7 +48,7 @@ func (q *Queries) ListOwnedCollections(ctx context.Context, userID string) ([]Li
 
 const ownedCollectionDocument = `-- name: OwnedCollectionDocument :one
 SELECT jsonb_build_object(
-    'id', c.id, 'name', c.name, 'enabled', c.enabled,
+    'id', c.id, 'name', c.name, 'enabled', c.enabled, 'version', c.version::text,
     'research_instruction', c.research_instruction,
     'initial_lookback_mode', c.initial_lookback_mode,
     'initial_lookback_days', c.initial_lookback_days,

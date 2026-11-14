@@ -15,6 +15,14 @@ type CollectionStore interface {
 type Collections struct {
 	Store   CollectionStore
 	Creator *CreateCollection
+	Updater *UpdateCollection
+}
+
+func (uc Collections) Update(ctx context.Context, digest [32]byte, id, key string, input domain.CollectionUpdate) (domain.CollectionUpdateResult, error) {
+	if uc.Updater == nil {
+		return domain.CollectionUpdateResult{}, domain.ErrCollectionStore
+	}
+	return uc.Updater.Update(ctx, digest, id, key, input)
 }
 
 func (uc Collections) Execute(ctx context.Context, digest [32]byte, key string, input domain.NewCollection) (string, bool, error) {

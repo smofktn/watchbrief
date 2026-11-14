@@ -25,6 +25,7 @@ type AppCollection struct {
 	DisplayOrder        int32
 	CreatedAt           pgtype.Timestamptz
 	UpdatedAt           pgtype.Timestamptz
+	Version             int64
 }
 
 type AppCollectionCreationRequest struct {
@@ -40,6 +41,14 @@ type AppCollectionSchedule struct {
 	CronExpression string
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+}
+
+type AppCollectionUpdateRequest struct {
+	UserID        string
+	RequestKey    string
+	CollectionID  pgtype.Text
+	InputDigest   []byte
+	ResultVersion int64
 }
 
 type AppFactSource struct {
