@@ -1,6 +1,6 @@
 # WatchBrief ドキュメント
 
-ローカル実装の入口は[新規構築・一連の確認と障害復旧](verification-issue-17.md)。管理CLI、認証、保護URL、自分の設定・保存Reportの読み取りとログアウトが対象です。#18の最初のCollection本体作成と再試行は[新規作成](画面仕様/コレクションの新規作成.md)と[追加検証](../backend/README.md#collection本体の新規保存issue-18)を参照してください。採用済み契約は画面・API仕様と各設計の現在の節を参照してください。旧AI案の文書は参考資料として区別します。
+ローカル実装の入口は[新規構築・一連の確認と障害復旧](verification-issue-17.md)。管理CLI、認証、保護URL、自分の設定・保存Reportの読み取りとログアウトが対象です。#18の最初のCollection本体作成と再試行は[新規作成](画面仕様/コレクションの新規作成.md)と[追加検証](../backend/README.md#collection本体の新規保存issue-18)を参照してください。本体の編集は[編集画面](画面仕様/コレクション本体の編集.md)と[更新API](API仕様/patch-api-collections.md)、[隔離検証](../backend/README.md#collection本体の編集issue-74)を参照してください。採用済み契約は画面・API仕様と各設計の現在の節を参照してください。旧AI案の文書は参考資料として区別します。
 
 このディレクトリには、WatchBriefの仕様、論理設計、初期インフラ・運用設計を置く。
 

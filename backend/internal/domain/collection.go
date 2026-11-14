@@ -23,6 +23,7 @@ type CollectionSummary struct {
 
 type Collection struct {
 	CollectionSummary
+	Version             string              `json:"version"`
 	ResearchInstruction string              `json:"research_instruction"`
 	InitialLookbackMode string              `json:"initial_lookback_mode"`
 	InitialLookbackDays *int32              `json:"initial_lookback_days"`

@@ -29,7 +29,8 @@ def free_port():
 
 
 def main():
-    creation = sys.argv[1:] == ['--collection-creation']
+    updating = sys.argv[1:] == ['--collection-update']
+    creation = updating or sys.argv[1:] == ['--collection-creation']
     if sys.argv[1:] and not creation:
         raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
@@ -44,7 +45,10 @@ def main():
         shutil.copytree(ROOT / 'scripts', stage / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copy(ROOT / 'compose.yaml', stage / 'compose.yaml')
         (stage / 'backend').mkdir()
-        (stage / 'backend/db').symlink_to(ROOT / 'backend/db', target_is_directory=True)
+        if updating:
+            shutil.copytree(ROOT / 'backend/db', stage / 'backend/db')
+        else:
+            (stage / 'backend/db').symlink_to(ROOT / 'backend/db', target_is_directory=True)
         (stage / '.local/bin').mkdir(parents=True)
         for name in ('api', 'user-create', 'password-reset', 'goose'):
             (stage / '.local/bin' / name).symlink_to(ROOT / '.local/bin' / name)
@@ -56,11 +60,11 @@ def main():
             raise SystemExit('Node runtime unavailable; run make runtime-install first.')
         node_binary = node_result.stdout.strip()
 
-        def run(arguments, content=None, expected=0):
+        def run(arguments, content=None, expected=0, timeout=300):
             result = subprocess.run(arguments, input=content, cwd=stage, env=environment,
-                                    text=True, capture_output=True, timeout=300)
+                                    text=True, capture_output=True, timeout=timeout)
             if result.returncode != expected:
-                stage_label = ' '.join(line for line in result.stderr.splitlines() if (line.startswith('browser_stage=') or line.startswith('browser_code=')) and all(c.isalnum() or c in '_=-' for c in line))
+                stage_label = ' '.join(line for line in result.stderr.splitlines() if (line.startswith('browser_stage=') or line.startswith('browser_code=') or line.startswith('browser_line=')) and all(c.isalnum() or c in '_=-' for c in line))
                 raise AssertionError('Verification command failed: ' + Path(arguments[0]).name + ' ' + stage_label + ' (private output suppressed)')
             return result.stdout
 
@@ -89,6 +93,24 @@ def main():
             identity = json.loads(compose('ps', '--format', 'json'))
             assert identity['Project'] == project and identity['Service'] == 'postgres'
             script('bootstrap-postgres-roles.py')
+            if updating:
+                # Exercise the additive upgrade on real version-9 rows as well as a fresh schema.
+                upgrade_file = stage / 'backend/db/goose/000010_collection_update.sql'
+                upgrade_sql = upgrade_file.read_text()
+                upgrade_file.unlink()
+                script('migrate-postgres.py', 'up')
+                sql("INSERT INTO app.users(id,login_id,password_hash) VALUES ('00000000000000000000000021','verify_upgrade','upgrade-placeholder');"
+                    "INSERT INTO app.collections(id,user_id,name,research_instruction,initial_lookback_mode) VALUES ('00000000000000000000000022','00000000000000000000000021','架空の移行前設定','移行前の架空方針','ai');"
+                    "INSERT INTO app.collection_creation_requests(user_id,request_key,input_digest,collection_id) VALUES ('00000000000000000000000021','00112233-4455-4677-8899-aabbccddeeff',decode(repeat('ab',32),'hex'),'00000000000000000000000022');")
+                saved_collection = sql("SELECT to_jsonb(c)::text FROM app.collections c")
+                saved_request = sql("SELECT to_jsonb(r)::text FROM app.collection_creation_requests r")
+                upgrade_file.write_text(upgrade_sql)
+                script('migrate-postgres.py', 'up')
+                assert sql("SELECT (to_jsonb(c)-'version')::text FROM app.collections c") == saved_collection
+                assert sql("SELECT version FROM app.collections") == '1'
+                assert sql("SELECT to_jsonb(r)::text FROM app.collection_creation_requests r") == saved_request
+                sql("DELETE FROM app.collection_creation_requests; DELETE FROM app.collections; DELETE FROM app.users;")
+                print('Version 9 to 10: saved Collection and creation request unchanged; initial revision 1: passed', flush=True)
             script('migrate-postgres.py', 'up')
             script('migrate-postgres.py', 'up')
             expected_version = max(int(path.name.split('_')[0]) for path in (ROOT / 'backend/db/goose').glob('*.sql'))
@@ -143,7 +165,7 @@ def main():
                 responses = []
                 auth_marker = 'Bearer ' + secrets.token_urlsafe(24)
 
-                def request(path, token=None, data=None, supplied_origin=origin, extra_headers=None):
+                def request(path, token=None, data=None, supplied_origin=origin, extra_headers=None, method=None):
                     headers = {'Authorization': auth_marker}
                     if token:
                         headers['Cookie'] = 'watchbrief_session=' + token
@@ -153,7 +175,7 @@ def main():
                         headers['Content-Type'] = 'application/json'
                     headers.update(extra_headers or {})
                     req = urllib.request.Request(f'http://127.0.0.1:{api_port}' + path,
-                                                 data=None if data is None else json.dumps(data).encode(), headers=headers)
+                                                 data=None if data is None else json.dumps(data).encode(), headers=headers, method=method)
                     try:
                         response = urllib.request.urlopen(req, timeout=20)
                     except urllib.error.HTTPError as error:
@@ -188,6 +210,8 @@ def main():
                         assert request(path, token, data, invalid_origin)[0] == 403
                 if creation:
                     runpy.run_path(str(stage / 'scripts/verify-collection-creation.py'))['verify'](request, sql, token, other_token)
+                if updating:
+                    runpy.run_path(str(stage / 'scripts/verify-collection-update.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
@@ -210,6 +234,10 @@ def main():
                 cli('password-reset', logins[0], passwords[2])
                 for old in (token, token2):
                     assert request('/api/me', old)[0] == 401
+                    if updating:
+                        assert request('/api/collections/' + ids[logins[0]]['collection'], old,
+                                       dict(name='架空', research_instruction='', initial_lookback_mode='ai', initial_lookback_days=None, version='1'),
+                                       method='PATCH', extra_headers={'Idempotency-Key': '00112233-4455-4677-8899-aabbccddeeff'})[0] == 401
                 assert request('/api/me', other_token)[0] == 200
                 assert request('/api/login', data={'login_id': logins[0], 'password': passwords[0]})[0] == 401
                 token = login(password=passwords[2])
@@ -219,8 +247,8 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation)))
-                print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)]), end='', flush=True)
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating)))
+                print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
                 output.flush()
                 log_text = logs.read_text()

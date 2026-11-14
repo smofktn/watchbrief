@@ -28,6 +28,7 @@
   "name": "架空コレクション",
   "enabled": false,
   "display_order": 0,
+  "version": "1",
   "research_instruction": "架空の調査方針",
   "initial_lookback_mode": "ai",
   "initial_lookback_days": null,
@@ -61,3 +62,5 @@ Scheduleなしは `schedule: null`、対象・情報源なしはそれぞれ空�
 認証を確認してから詳細ID・所有者を扱う。全応答は `Cache-Control: no-store`、JSON形式。GETによる設定変更・User/セッション作成は行わない。Cookieの期限更新は従来どおり本人情報APIで行い、このAPIではSet-Cookieを発行しない。
 
 この取得経路は設定4テーブルのSELECTを使う。#18で追加する本体INSERTと要求記録の権限は[作成API](post-api-collections.md)を参照する。詳細は所有者で絞ったCollectionを起点に、外部キーで所属する配下設定だけを組み立てる。ID差し替え・配下情報の他者混入・空配列・未認証と内部障害の区別を試験する。構造化エラーログは固定項目とし、Cookie・DBエラー・設定全文を含めない。
+
+本体編集で使う `version` は詳細JSONだけに含む正規十進文字列。版の照合と[更新API](patch-api-collections.md)を組み合わせる。一覧の応答は変更しない。版10の明示migrationが必要。

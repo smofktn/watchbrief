@@ -1,6 +1,7 @@
 import { nextTick, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorCode, jsonBody, request } from '../../api'
+import { validateCollectionForm } from './form'
 import { useSession } from '../auth/session'
 import { collectionIDFromPath } from '../../navigation'
 
@@ -32,13 +33,7 @@ export const useCollectionCreation = () => {
     conflict.value = false
     message.value = ''
   }
-  const validate = () => {
-    fields.name = /^\p{White_Space}*$/u.test(form.name) || [...form.name].length > 200 || form.name.includes('\0') ? '名前は空白だけにせず、1〜200文字で入力してください。' : ''
-    fields.instruction = [...form.instruction].length > 10000 || form.instruction.includes('\0') ? '調査方針は10,000文字以内で入力してください。' : ''
-    const days = Number(form.days)
-    fields.days = form.mode !== 'ai' && (form.mode !== 'days' || !/^\d+$/.test(form.days) || !Number.isInteger(days) || days < 1 || days > 365) ? '日数は1〜365の整数で入力してください。' : ''
-    return !fields.name && !fields.instruction && !fields.days
-  }
+  const validate = () => validateCollectionForm(form, fields)
   const submit = async () => {
     if (submitting.value || conflict.value || session.state.value !== 'authenticated') {
       return

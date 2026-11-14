@@ -117,3 +117,9 @@ provisioningはCREATE ROLE・CONNECT・app USAGE・search_pathと秘密パスワ
 ## Collection本体の作成権限（Issue #18）
 
 版9を明示migrationで適用する。APIへcollectionsの指定列INSERTとcollection_creation_requestsのSELECT/INSERTを追加する。既存データの更新・削除、enabled列の指定、配下設定の書込は許可しない。要求記録はDB内の非公開状態で、Gitへ保存しない。保存構造と制限は[DB設計](database-design.md#collection本体の新規保存issue-18)、隔離検証は[Backend](../backend/README.md#collection本体の新規保存issue-18)を参照する。通常の起動へmigrationを自動追加しない。
+
+## Collection本体の更新権限（Issue #74）
+
+版10は本体のversion列（既存行は1）、更新要求記録と最小列UPDATE権限を追加する。既存設定や履歴の本文は変更しない。APIで編集を使う前に `make db-migrate` で明示適用し、`make db-version` で版を確認する。通常起動への自動migrationやDownは追加しない。版10未適用のDBへ新しい詳細取得・更新APIを向けると失敗する。
+
+通常DBを変更しない事前検証は `make verify-collection-update`。保存構造・列権限は[DB設計](database-design.md#collection本体の編集issue-74)を参照する。通常DBが停止している場合、今回の隔離検証のために起動する必要はない。

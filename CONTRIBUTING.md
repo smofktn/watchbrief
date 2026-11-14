@@ -35,7 +35,7 @@ make check
 make build
 ```
 
-`frontend-install` は `npm ci --ignore-scripts` を維持する。`make check` はGo全packageのrace試験、Vue/TypeScript型検査、Vitest、作業ツリーの差分検査を行う。CIではさらにPRのbaseから検査対象HEADまで `git diff --check` を実行し、コミット済み変更の空白エラーも検出する。ローカルで作業ブランチのコミット差分を確認する場合は、最新の参照をfetchした後に `git diff --check origin/main...HEAD` を実行する。`make build` は画面とAPI・User作成CLI・パスワード再設定CLIをビルドする。
+`frontend-install` は `npm ci --ignore-scripts` を維持する。`make check` は一括起動のプロセス監督試験（使い捨ての偽サービス・Docker不要）、Go全packageのrace試験、Vue/TypeScript型検査、Vitest、作業ツリーの差分検査を行う。CIではさらにPRのbaseから検査対象HEADまで `git diff --check` を実行し、コミット済み変更の空白エラーも検出する。ローカルで作業ブランチのコミット差分を確認する場合は、最新の参照をfetchした後に `git diff --check origin/main...HEAD` を実行する。`make build` は画面とAPI・User作成CLI・パスワード再設定CLIをビルドする。
 
 PRのChecksから `CI / Check and build` の詳細を開き、失敗した `Install dependencies`・`Check`・`Build` のstepを確認する。同じMakeコマンドで再現し、修正をpushすると再実行される。古いコミットの成功を現在の成功とみなさず、PRの最新headに対する結果を確認する。同じPRに新しい実行が始まると古い実行をキャンセルし、各ジョブは20分で打ち切る。競合中のPRやforkからのPRはGitHub側の制約・承認待ちで開始されない場合があり、PRとActionsの表示を確認する。権限を広げて回避しない。
 
