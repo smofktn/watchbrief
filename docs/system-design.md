@@ -185,7 +185,24 @@ Terraform/CDK等のローカル操作には、作業用ユーザーの[SSOプロ
 | アクセス許可セット | 有効。これは権限セットを使う機能の有効化であり、作業用ユーザーへ管理者権限を付与済みという意味ではない |
 | その他のリージョン | なし。Multi-Regionの複製は追加しない |
 
-Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。将来その構成へ変更する際は追加料金と影響を説明して別途合意する。ID管理元、MFA・復旧、ユーザー/グループ・権限セットの中身と割当・セッション時間は未決定。採用・実行承認と、設定反映・ログイン・権限の許可/拒否の検証を区別し、実施結果はIssueへ記録する。
+初期構築の作業用アクセスは次の構成に合意した。ユーザーを直接割り当てる案から、利用者がグループの仕組みを学ぶためにグループ経由で割り当てる形へ変更した。Identity Centerのグループはユーザーをまとめるものであり、IAMユーザー用のIAMグループとは別である。グループを作るだけではAWSの操作権限は付かない。
+
+| 項目 | 合意した作業用アクセス |
+|---|---|
+| ID管理元 | Identity Centerディレクトリ。パスワード認証、Directプロビジョニング |
+| ユーザー | 作業用ユーザーを作成し、メールの案内から本人がパスワードを設定する。実際のユーザー名・メールアドレスは公開文書へ記録しない |
+| グループ | `watchbrief-operators`。作業用ユーザーを所属させる |
+| アクセス許可セット | `WatchBriefAdministrator`。AWS管理ポリシー `AdministratorAccess` を使用し、対象AWSアカウントとグループへ割り当てる |
+| 許可セットの説明 | `Administrator access for WatchBrief initial setup and management`。この欄は日本語を受け付けないため英語で記載する |
+| AWSアカウントのセッション期間 | 1時間。ポータルのセッション期間とは別であり、ポータル側の期間は今回変更しない |
+| リレー状態・タグ | 初期作成では設定しない |
+| MFA | 作業用ユーザーに認証アプリを登録し、スマートフォンの6桁コードをPCへ入力して利用する。ルートユーザー用の登録とは別。許可する種類は認証アプリとセキュリティキー/組み込み認証の両方を維持し、認証アプリだけへの制限は行わない |
+
+管理者権限は初期構築用として採用する。対象アカウントで課金リソースの作成・削除やIAM権限の変更が可能になることを説明して承認を得た。権限の付与は個別のEC2作成・課金・公開操作を事前承認するものではない。通常運用向けの権限への絞り込み、MFAの要求頻度・未登録時の扱い・復旧方法は引き続き確認する。公式の[MFA種類の設定](https://docs.aws.amazon.com/singlesignon/latest/userguide/how-to-configure-mfa-types.html)は利用可能な種類を選ぶものであり、認証アプリを先に表示する優先順位の設定として扱わない。
+
+普段の入口にはAWSアクセスポータルのURLをブックマークする。初回パスワード設定メールのリンク、AWSアカウントのルート/IAMユーザー向けサインインとは区別する。実際のポータルURL、MFAのQRコード・秘密鍵・認証コード、認証情報はGitやIssueへ記録しない。
+
+Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。将来その構成へ変更する際は追加料金と影響を説明して別途合意する。採用・実行承認と、設定反映・ログイン・権限の許可/拒否の検証を区別し、利用者の画面操作による確認とAWS API/CLIでの照合も分けて実施結果をIssueへ記録する。
 
 ### 初回構成のたたき台（Issue #21・未採用）
 
