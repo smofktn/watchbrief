@@ -211,16 +211,22 @@ Terraform/CDK等のローカル操作には、作業用ユーザーの[SSOプロ
 
 Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。将来その構成へ変更する際は追加料金と影響を説明して別途合意する。採用・実行承認と、設定反映・ログイン・権限の許可/拒否の検証を区別し、利用者の画面操作による確認とAWS API/CLIでの照合も分けて実施結果をIssueへ記録する。
 
+### 初期検証のEC2サイズ（Issue #21・合意済み）
+
+利用者の意向は、運用に乗せるまで必要な容量・性能を満たす範囲で最小の構成を使うこと。nanoへの最小化自体を目的にせず、検証開始はmicroクラス・メモリ1 GiBとする。現行Argon2idは1件64 MiB・同時2件で作業領域だけで約128 MiBを使う。OS・PostgreSQL・nginx・Go全体の実メモリは未測定なので、1 GiBが十分であることや最小要件を実証済みとは扱わない。認証・保存・再表示・再起動等でメモリ・CPU・ディスク使用量を確認し、不足時は料金と停止等の影響を説明して合意後に構成を変更する。認証強度を弱めて容量に合わせない。
+
+x86_64を維持する場合の優先候補は東京の `t3a.micro`（2 vCPU・1 GiB、On-Demand）。具体familyの提供状況とAMI、CPU credit設定、ディスク容量は起動画面で確認し、採用と作成・課金の承認を区別する。実AWS上の動作確認はまだない。
+
 ### 初回構成のたたき台（Issue #21・未採用）
 
-以下は従来のt3.small構成を含む比較案であり、構成・料金の採用やAWS操作の承認ではない。利用者は運用に乗せるまで最小サイズを優先する意向を示したため、初回サイズはnano/micro等を比較して見直し、t3.smallを採用済みとしない。現行Argon2idは1件64 MiB・同時2件で作業領域だけで約128 MiBを使う。OS・PostgreSQL・nginx・Go全体の実メモリは未測定であり、512 MiBまたは1 GiBでの動作を保証しない。認証の強度を緩めず、構成の採用と実際の動作・不足時のサイズ変更を別に確認する。
+以下は従来のt3.small構成を含む比較案であり、構成・料金の採用やAWS操作の承認ではない。初期検証は前節のmicro方針へ更新したため、t3.smallを現在の採用サイズとしない。他の具体案も、起動前の確認と合意後に採用する。
 
 HTTPSの公開範囲・運用者ログイン・初期ネットワークの現在の合意は前節を参照し、AWS側の操作結果はIssueに記録する。ドメイン・DNSは未確認であり、AMI ID、公開ホスト名、管理IP等を推測で固定しない。
 
 | 要素 | 提案 | 理由・確認が残ること |
 |---|---|---|
 | OS・CPU | 標準Ubuntu Server 24.04 LTS、amd64 | [標準セキュリティ保守は2029年5月まで](https://documentation.ubuntu.com/release-notes/24.04/)。既存のLinux amd64版goose導入と合わせやすい。26.04 LTS等との比較と、構築時の[Canonical公式AMI・所有者確認](https://ubuntu.com/aws/docs/aws-how-to/instances/find-ubuntu-images/)は別途必要 |
-| EC2 | 東京のt3.small（2 vCPU・2 GiB）、On-Demand、CPU creditはStandard | 小規模・本人検証用の出発点。容量保証ではなくメモリ/CPUを実測する。Standardは追加CPU credit課金を避ける一方、credit不足時にCPU性能が制限される。[仕様](https://aws.amazon.com/ec2/instance-types/t3/)・[Standardの動作](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html)。アカウント全体の既定値は変更しない |
+| EC2 | 従来の比較例：東京のt3.small（2 vCPU・2 GiB）、On-Demand、CPU creditはStandard | 初回サイズは前節のmicro方針へ更新した。容量保証ではなくメモリ/CPUを実測する。Standardは追加CPU credit課金を避ける一方、credit不足時にCPU性能が制限される。[仕様](https://aws.amazon.com/ec2/instance-types/t3/)・[Standardの動作](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html)。アカウント全体の既定値は変更しない |
 | EBS | gp3、OS 20 GiB＋DB 10 GiB、追加性能指定なし | 最小検証用の容量案。双方の暗号化とDB用保持の合意を維持。ファイルシステム・UUIDマウント・未マウント時の起動拒否を具体化し、空き容量を検証する |
 | PostgreSQL | OSへPostgreSQL 18を導入し、systemdで管理 | [PGDGはUbuntu 24.04に対応](https://www.postgresql.org/download/linux/ubuntu/)。ローカルComposeの配置を本番へ流用せず、パッケージ版・導入元・更新方法・初期cluster自動作成の抑止を確認する。空のDB用EBSへの初回作成は明示操作とする |
 | ビルド・配置 | EC2外でLinux amd64のGoバイナリとVite静的成果物を作り、SSHで版別配置 | 常用EC2にNode/Goのビルド負荷を持ち込まず、APIと画面を同じ版として切り替える。バージョン/チェックサム、配下assetの保持、DB互換性、前版への切り戻しの具体手順は未決定 |
