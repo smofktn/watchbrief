@@ -43,9 +43,9 @@ VueとGoを使う最小骨格の方針には合意したが、アプリの実装
 ## 初期インフラの合意範囲
 
 - Issue #11で、初期MVPは画面配信、API、Scheduler、Worker、停止監視、DBをEC2 1台へ同居させる方針に合意した。初期からRDSを使う決定を更新し、構築・運用を経験しながら段階的にAWSのマネージドサービスを利用する。
-- 初期OSは標準版のUbuntu Server LTSを採用する。Amazon Linux 2023と比較し、AWS以外のLinuxサーバーや将来のRaspberry Pi運用にも経験を活かしたい意向を重視した。media-vault側のOSを決定するものではない。
-- Ubuntuの具体的なLTSバージョン、公式AMIのID・提供元確認、CPUアーキテクチャ、nginx・PostgreSQL・アプリruntimeとの互換性、OS更新・再起動の手順は今後確認・設計する。Ubuntu Proなどの有料版を採用する決定ではない。
-- 初期EC2は新規作成するWatchBrief専用VPC内のパブリックサブネットに配置し、Internet Gateway経由でインターネットへ接続する。デフォルトVPCは利用しない。公開IPと経路を設定してWeb公開、管理回線からのSSH、外部情報取得・API呼び出しを行う。VPCの初期設定は後段の「初期ネットワークの方針」に従い、サブネットのアドレス設計・経路などは未決定である。手動構築とTerraform導入の順序は[構築順・費用・実装への引き継ぎ](#構築順費用実装への引き継ぎ)を参照する。
+- 初期OSは標準版のUbuntu Server 24.04 LTS、x86_64（amd64）を採用する。Amazon Linux 2023と比較し、AWS以外のLinuxサーバーや将来のRaspberry Pi運用にも経験を活かしたい意向を重視した。media-vault側のOSを決定するものではない。
+- Ubuntu 26.04 LTSとも比較した上で、これまで検討した24.04の導入方法で進める意向に合意した。公式AMIのID・提供元確認、nginx・PostgreSQL・アプリruntimeとの互換性、OS更新・再起動の手順は今後確認・設計する。Ubuntu Proなどの有料版を採用する決定ではない。
+- 初期EC2は新規作成するWatchBrief専用VPC内のパブリックサブネットに配置し、Internet Gateway経由でインターネットへ接続する。デフォルトVPCは利用しない。公開IPと経路を設定してWeb公開、管理回線からのSSH、外部情報取得・API呼び出しを行う。VPC・サブネット・Internet Gateway・ルートテーブルの具体的な合意設定は後段の「初期ネットワークの方針」に従う。手動構築とTerraform導入の順序は[構築順・費用・実装への引き継ぎ](#構築順費用実装への引き継ぎ)を参照する。
 - 保守・障害時の利用停止を許容し、運用者が調査・復旧する。初期MVPでは冗長化によるサービス継続を前提にしない。EC2やディスクの障害はアプリとDBの両方へ影響する。
 - API、Scheduler、Worker、停止監視は同居するPostgreSQLを使用する。SQLiteとの比較から、複数プロセスでの利用、自前DBの運用学習、将来同じエンジンでRDSへ移せることを重視して採用した。DBデータはOS用とは別のDB用EBSへ保存する。バージョン、ディスクの容量・種類と具体設定、接続・認証方式、設置・更新手順は未決定である。AIサービスや公開情報源までEC2内で自前運用する意味ではない。
 - 将来RDSへ移す際はインターネットへ公開せず、通常のDB接続元をアプリ実行環境に限定する。EC2から接続する段階ではSecurity Groupでアプリ用EC2からのDB接続を許可する方針とする。ECSなどへの移行後の具体設定、ポート、管理用接続経路、DB認証方式は今後設計する。
@@ -217,15 +217,17 @@ Identity Center・Organizations本体の追加利用料は不要だが、[Multi-
 
 x86_64を維持する場合の優先候補は東京の `t3a.micro`（2 vCPU・1 GiB、On-Demand）。具体familyの提供状況とAMI、CPU credit設定、ディスク容量は起動画面で確認し、採用と作成・課金の承認を区別する。実AWS上の動作確認はまだない。
 
+初期OS・CPUアーキテクチャは標準版Ubuntu Server 24.04 LTS、x86_64（amd64）とする。26.04 LTSは標準保守が長くPostgreSQL 18を標準提供する候補として比較したが、利用者はこれまで検討した24.04の方法で進めることを選んだ。24.04の方が省メモリであることや、26.04が非対応であることを理由にしない。24.04の[標準保守は2029年5月まで](https://documentation.ubuntu.com/release-notes/24.04/)。PostgreSQL 18を使う場合は[PGDGの対応](https://www.postgresql.org/download/linux/ubuntu/)を確認して導入する案を維持し、DB導入方式・版の最終採用は別途扱う。起動前にCanonical公式の標準版AMIとアーキテクチャを確認する。実環境の1 GiBでの動作は未確認。
+
 ### 初回構成のたたき台（Issue #21・未採用）
 
-以下は従来のt3.small構成を含む比較案であり、構成・料金の採用やAWS操作の承認ではない。初期検証は前節のmicro方針へ更新したため、t3.smallを現在の採用サイズとしない。他の具体案も、起動前の確認と合意後に採用する。
+以下は従来のt3.small構成を含む比較案であり、構成・料金の採用やAWS操作の承認ではない。初期検証は前節のmicro方針へ更新したため、t3.smallを現在の採用サイズとしない。OS・CPUは前節の24.04/amd64に合意済み。他の具体案は、起動前の確認と合意後に採用する。
 
 HTTPSの公開範囲・運用者ログイン・初期ネットワークの現在の合意は前節を参照し、AWS側の操作結果はIssueに記録する。ドメイン・DNSは未確認であり、AMI ID、公開ホスト名、管理IP等を推測で固定しない。
 
 | 要素 | 提案 | 理由・確認が残ること |
 |---|---|---|
-| OS・CPU | 標準Ubuntu Server 24.04 LTS、amd64 | [標準セキュリティ保守は2029年5月まで](https://documentation.ubuntu.com/release-notes/24.04/)。既存のLinux amd64版goose導入と合わせやすい。26.04 LTS等との比較と、構築時の[Canonical公式AMI・所有者確認](https://ubuntu.com/aws/docs/aws-how-to/instances/find-ubuntu-images/)は別途必要 |
+| OS・CPU | 標準Ubuntu Server 24.04 LTS、amd64（前節で合意済み） | 構築時の[Canonical公式AMI・所有者確認](https://ubuntu.com/aws/docs/aws-how-to/instances/find-ubuntu-images/)と実際の動作確認は別途必要 |
 | EC2 | 従来の比較例：東京のt3.small（2 vCPU・2 GiB）、On-Demand、CPU creditはStandard | 初回サイズは前節のmicro方針へ更新した。容量保証ではなくメモリ/CPUを実測する。Standardは追加CPU credit課金を避ける一方、credit不足時にCPU性能が制限される。[仕様](https://aws.amazon.com/ec2/instance-types/t3/)・[Standardの動作](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html)。アカウント全体の既定値は変更しない |
 | EBS | gp3、OS 20 GiB＋DB 10 GiB、追加性能指定なし | 最小検証用の容量案。双方の暗号化とDB用保持の合意を維持。ファイルシステム・UUIDマウント・未マウント時の起動拒否を具体化し、空き容量を検証する |
 | PostgreSQL | OSへPostgreSQL 18を導入し、systemdで管理 | [PGDGはUbuntu 24.04に対応](https://www.postgresql.org/download/linux/ubuntu/)。ローカルComposeの配置を本番へ流用せず、パッケージ版・導入元・更新方法・初期cluster自動作成の抑止を確認する。空のDB用EBSへの初回作成は明示操作とする |
