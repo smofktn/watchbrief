@@ -176,7 +176,16 @@ AWSアカウントへのアクセスには[AWS Organizationsの管理アカウ�
 
 Terraform/CDK等のローカル操作には、作業用ユーザーの[SSOプロファイルと一時認証](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)を使う方針とし、採用するツール・SDK版との互換性を導入時に確認する。運用者の認証情報をGitやEC2のアプリへ配布しない。人のAWSログインは、EC2に付けるIAMロール、OS/DB権限、SSH鍵、WatchBriefのアプリ認証を置き換えない。rootへ登録したMFAが作業用ユーザーへ自動継承されるとは扱わない。
 
-Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。インスタンスのリージョン・構成、ID管理元、MFA・復旧、ユーザー/グループ・権限セット・セッション時間、Organizationsの既存状態と有効化対象はまだ未確認・未決定。方式採用だけで組織作成・有効化・有料リソース追加を実施せず、画面上の対象・効果・料金・Secretの扱いを説明して合意後に進める。現時点では設計合意であり、設定済み・ログイン検証済みを意味しない。
+初期の組織インスタンスは、現在のOrganizations管理アカウントに次の構成で作成・有効化することに合意した。これは運用者のログイン基盤の設定であり、EC2等の作成・課金・公開の承認とは分ける。
+
+| 項目 | 合意した初期設定 |
+|---|---|
+| インスタンス構成・プライマリリージョン | 単一リージョン、アジアパシフィック（東京）。作成後のプライマリリージョン変更はそのままではできないため、作成前に確認する |
+| 保存時の暗号化 | AWS所有のキー。カスタマー管理KMS鍵を追加しない |
+| アクセス許可セット | 有効。これは権限セットを使う機能の有効化であり、作業用ユーザーへ管理者権限を付与済みという意味ではない |
+| その他のリージョン | なし。Multi-Regionの複製は追加しない |
+
+Identity Center・Organizations本体の追加利用料は不要だが、[Multi-Region等で作るカスタマー管理KMS鍵は課金対象](https://docs.aws.amazon.com/singlesignon/latest/userguide/organization-instances-identity-center.html)。将来その構成へ変更する際は追加料金と影響を説明して別途合意する。ID管理元、MFA・復旧、ユーザー/グループ・権限セットの中身と割当・セッション時間は未決定。採用・実行承認と、設定反映・ログイン・権限の許可/拒否の検証を区別し、実施結果はIssueへ記録する。
 
 ### 初回構成のたたき台（Issue #21・未採用）
 
