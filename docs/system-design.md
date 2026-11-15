@@ -65,7 +65,7 @@ VueとGoを使う最小骨格の方針には合意したが、アプリの実装
 |---|---|---|
 | VPC | 東京リージョンにWatchBrief専用として新規作成し、初期EC2を置く。デフォルトVPCは利用しない。初期設定は下記を参照 | 後続Terraformへの取り込み |
 | パブリックサブネット | `watchbrief-vpc` 内に `watchbrief-public` を1つ作り、AZは `ap-northeast-1a`、IPv4 CIDRは `10.21.1.0/24` とする。EC2を置き、Internet Gatewayへの経路を設定する | 具体的なルート設定 |
-| Internet Gateway | VPCとインターネット間の経路 | 関連付け、ルートテーブル |
+| Internet Gateway | `watchbrief-igw` を1つ作成し、`watchbrief-vpc` へアタッチする。VPCとインターネット間の出入口とする | サブネットからInternet Gatewayへのルート設定 |
 | EC2の公開IP | Elastic IPを1つ使用し、外部からnginxや許可されたSSHへ到達するための固定IPv4とする。初期VPCにIPv6は割り当てない | 実際のIP、DNSとの関連付け |
 | Security Groupと待受設定 | nginxへのWeb接続、管理回線からのSSHを制御し、API・DBの外部直接接続を許可しない | Web・管理用の具体的なポートとルール、外向き通信の制御 |
 
