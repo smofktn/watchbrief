@@ -64,8 +64,9 @@ VueとGoを使う最小骨格の方針には合意したが、アプリの実装
 | 要素 | 合意した役割 | 未決定の具体設定 |
 |---|---|---|
 | VPC | 東京リージョンにWatchBrief専用として新規作成し、初期EC2を置く。デフォルトVPCは利用しない。初期設定は下記を参照 | 後続Terraformへの取り込み |
-| パブリックサブネット | `watchbrief-vpc` 内に `watchbrief-public` を1つ作り、AZは `ap-northeast-1a`、IPv4 CIDRは `10.21.1.0/24` とする。EC2を置き、Internet Gatewayへの経路を設定する | 具体的なルート設定 |
-| Internet Gateway | `watchbrief-igw` を1つ作成し、`watchbrief-vpc` へアタッチする。VPCとインターネット間の出入口とする | サブネットからInternet Gatewayへのルート設定 |
+| パブリックサブネット | `watchbrief-vpc` 内に `watchbrief-public` を1つ作り、AZは `ap-northeast-1a`、IPv4 CIDRは `10.21.1.0/24` とする。下記ルートテーブルを明示的に関連付ける | EC2配置後の実疎通確認 |
+| Internet Gateway | `watchbrief-igw` を1つ作成し、`watchbrief-vpc` へアタッチする。VPCとインターネット間の出入口とする | EC2配置後の実疎通確認 |
+| ルートテーブル | `watchbrief-vpc` 内に `watchbrief-public-rt` を新規作成し、`watchbrief-public` のみに明示的に関連付ける。`10.21.0.0/16 → local` を維持し、`0.0.0.0/0 → watchbrief-igw` を追加する | 後続Terraformへの取り込みと実疎通確認 |
 | EC2の公開IP | Elastic IPを1つ使用し、外部からnginxや許可されたSSHへ到達するための固定IPv4とする。初期VPCにIPv6は割り当てない | 実際のIP、DNSとの関連付け |
 | Security Groupと待受設定 | nginxへのWeb接続、管理回線からのSSHを制御し、API・DBの外部直接接続を許可しない | Web・管理用の具体的なポートとルール、外向き通信の制御 |
 
@@ -74,6 +75,8 @@ VueとGoを使う最小骨格の方針には合意したが、アプリの実装
 デフォルトVPCを使う案と比較し、WatchBrief用のリソースと設定の影響範囲を整理し、subnetや経路の構築を学ぶため専用VPCの新規作成を選んだ。VPC自体の作成・利用に追加料金はないが、EC2・公開IP・追加するネットワーク機能などは別途費用を確認する。この方針は既存VPCを変更・削除する指示ではない。
 
 Issue #21の最初の手動作成では「VPCのみ」を選び、名前タグを `watchbrief-vpc`、IPv4 CIDRを手動入力の `10.21.0.0/16`、IPv6割り当てなし、テナンシーをデフォルトとすることに合意した。「専用VPC」は用途を分ける意味であり、Dedicated tenancyの物理ホスト占有を指定するものではない。IPAMからの割り当ては使わず、VPC暗号化コントロールは有効にしない。同機能は[VPC通信の暗号化の監視・強制](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-encryption-controls.html)を扱う追加機能であり、別に設定するHTTPSやEBS暗号化を省略する判断ではない。サブネット・経路・EC2・公開IP等の作成と外部公開は、別途対象・料金・影響を説明して合意後に進める。作成結果はIssueへ記録し、設定の合意と実際の疎通確認を区別する。
+
+ルートテーブルは既存のメインを編集する案と比較し、利用するサブネットを明示して影響範囲を追いやすくするため新規作成する。変更前の関連付けは手元に控え、切り戻す際は追加経路の削除や元の関連付けへ戻す操作を行う。ルートは通信の送り先を決めるものであり、Security Group等の通信許可やAPI・DBの待受制限を置き換えない。
 
 サブネット名に `public` を付けるだけでは公開経路は設定されない。サブネット作成と、Internet Gateway・ルート設定・公開IP・通信許可の準備と疎通確認を分けて扱う。
 
