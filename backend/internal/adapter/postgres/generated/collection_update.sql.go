@@ -11,6 +11,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendCollectionTarget = `-- name: AppendCollectionTarget :exec
+INSERT INTO app.watch_targets(id, collection_id, name, instruction, enabled, display_order)
+SELECT $1, $2, $3, $4, true, COALESCE(MAX(display_order), -1) + 1
+FROM app.watch_targets WHERE collection_id = $2
+`
+
+type AppendCollectionTargetParams struct {
+	ID           string
+	CollectionID string
+	Name         string
+	Instruction  string
+}
+
+func (q *Queries) AppendCollectionTarget(ctx context.Context, arg AppendCollectionTargetParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionTarget,
+		arg.ID,
+		arg.CollectionID,
+		arg.Name,
+		arg.Instruction,
+	)
+	return err
+}
+
 const collectionUpdateRequest = `-- name: CollectionUpdateRequest :one
 SELECT collection_id, input_digest, result_version FROM app.collection_update_requests
 WHERE user_id = $1 AND request_key = $2
@@ -77,6 +100,31 @@ func (q *Queries) RecordCollectionUpdate(ctx context.Context, arg RecordCollecti
 		arg.ResultVersion,
 	)
 	return err
+}
+
+const updateCollectionTarget = `-- name: UpdateCollectionTarget :one
+UPDATE app.watch_targets SET name = $3, instruction = $4, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2
+RETURNING id
+`
+
+type UpdateCollectionTargetParams struct {
+	ID           string
+	CollectionID string
+	Name         string
+	Instruction  string
+}
+
+func (q *Queries) UpdateCollectionTarget(ctx context.Context, arg UpdateCollectionTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionTarget,
+		arg.ID,
+		arg.CollectionID,
+		arg.Name,
+		arg.Instruction,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateOwnedCollection = `-- name: UpdateOwnedCollection :one

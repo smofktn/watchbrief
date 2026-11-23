@@ -31,7 +31,7 @@ func collectionUpdateHandler(service CollectionUpdater, logger *slog.Logger) htt
 			writeError(w, 400, "invalid_request", "入力内容と更新要求を確認してください。")
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 65536)
+		r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 		defer r.Body.Close()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -97,17 +97,71 @@ func readCollectionUpdate(body []byte) (domain.CollectionUpdate, error) {
 		}
 		fields[name] = raw
 	}
-	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || len(fields) != 5 {
+	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || (len(fields) != 5 && len(fields) != 6) {
 		return input, invalid
 	}
 	if json.Unmarshal(fields["version"], &input.Version) != nil || !domain.ValidCollectionVersion(input.Version) {
 		return input, invalid
 	}
 	delete(fields, "version")
+	if rawTargets, exists := fields["targets"]; exists {
+		if bytes.Equal(bytes.TrimSpace(rawTargets), []byte("null")) {
+			return input, invalid
+		}
+		var rows []json.RawMessage
+		if json.Unmarshal(rawTargets, &rows) != nil || len(rows) > 20 {
+			return input, invalid
+		}
+		for _, row := range rows {
+			target, err := readTargetChange(row)
+			if err != nil {
+				return input, invalid
+			}
+			input.Targets = append(input.Targets, target)
+		}
+		delete(fields, "targets")
+	}
+
 	raw, err := json.Marshal(fields)
 	if err != nil {
 		return input, invalid
 	}
 	input.NewCollection, err = readNewCollection(raw)
 	return input, err
+}
+
+func readTargetChange(body []byte) (domain.TargetChange, error) {
+	var target domain.TargetChange
+	invalid := errors.New("invalid target change JSON")
+	d := json.NewDecoder(bytes.NewReader(body))
+	token, err := d.Token()
+	if err != nil || token != json.Delim('{') {
+		return target, invalid
+	}
+	fields := map[string]json.RawMessage{}
+	for d.More() {
+		token, err := d.Token()
+		name, ok := token.(string)
+		if _, duplicate := fields[name]; err != nil || !ok || duplicate {
+			return target, invalid
+		}
+		var raw json.RawMessage
+		if d.Decode(&raw) != nil {
+			return target, invalid
+		}
+		fields[name] = raw
+	}
+	if token, err = d.Token(); err != nil || token != json.Delim('}') || d.Decode(new(any)) != io.EOF || len(fields) != 3 {
+		return target, invalid
+	}
+	id, exists := fields["id"]
+	if !exists || json.Unmarshal(id, &target.ID) != nil {
+		return target, invalid
+	}
+	var name, instruction *string
+	if json.Unmarshal(fields["name"], &name) != nil || name == nil || json.Unmarshal(fields["instruction"], &instruction) != nil || instruction == nil {
+		return target, invalid
+	}
+	target.Name, target.Instruction = *name, *instruction
+	return target, nil
 }

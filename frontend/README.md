@@ -103,3 +103,9 @@ make coverage
 `CollectionFields.vue` と `form.ts` は作成/編集の入力部品・検証を共有し、通信と状態処理は各composableが担う。版と再試行の記録はAPI/DBが担当する。詳細は[編集画面](../docs/画面仕様/コレクション本体の編集.md)と[更新API](../docs/API仕様/patch-api-collections.md)。版10を明示適用したAPIが必要で、画面URLはAPIのAPP_ORIGINと一致させる。既定は `http://127.0.0.1:5173`。
 
 `make frontend-test` / `make check` のVitestと、ルートの `make verify-collection-update` の隔離実DB/Chromiumを使う。前者の応答注入と後者の実保存・実DB停止を区別し、実行結果は#74/PRへ記録する。未保存変更確認は#42、配下CRUD等は#18の残りとして維持する。
+
+## Collectionと対象の一括編集（Issue #78）
+
+停止中Collection詳細の「編集」で、本体の下にある対象名・任意の補足指示を編集する。「対象を追加」は未保存の行を追加し、「追加を取り消す」はその行だけを破棄する。最後の「保存」で本体と変更対象を一緒に保存する。対象変更は1回20行以内、登録総数の上限ではない。既存対象の状態・順序・情報源は維持する。新規対象のONではCollectionの生成を開始しない。
+
+競合時は対象を含む下書きを残して最新値を比較し、明示操作で編集し直す。結果不明中は入力を止めて同じ要求を再送する。離脱・認証変化では下書きを消去する。make frontend-testは応答注入による試験、make verify-collection-targetsは隔離DB・Chromiumの通し試験であり、確認範囲を区別する。

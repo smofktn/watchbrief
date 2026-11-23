@@ -104,3 +104,5 @@ main向けPRではGitHub Actionsが既存の `make check`・`make build` を自�
 Collection本体の新規作成は一覧の「新規作成」から操作します。事前に版9の明示migrationが必要です。通常DBを停止しない追加検証は `make verify-collection-creation`。範囲と制限は[Backend手順](backend/README.md#collection本体の新規保存issue-18)を参照してください。
 
 Collection本体の編集は版10の明示migration後、停止中の詳細から操作します。事前の隔離検証は `make verify-collection-update`。[操作・検証手順](backend/README.md#collection本体の編集issue-74)を参照してください。
+
+停止中Collection本体とWatchTargetの追加・編集をまとめて保存する手順は[Frontend](frontend/README.md#collectionと対象の一括編集issue-78)、版11の明示migrationと隔離検証 `make verify-collection-targets` は[Backend](backend/README.md#本体とwatchtargetの一括保存issue-78)を参照してください。通常起動・#21の配備への自動migrationは行いません。

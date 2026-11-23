@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/smofktn/watchbrief/backend/internal/adapter/postgres/generated"
 	"github.com/smofktn/watchbrief/backend/internal/domain"
+	"github.com/smofktn/watchbrief/backend/internal/security/identifier"
 )
 
 func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key string, digest [32]byte, input domain.CollectionUpdate) (domain.CollectionUpdateResult, error) {
@@ -71,6 +72,26 @@ func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key st
 	}
 	if err != nil {
 		return empty, domain.ErrCollectionStore
+	}
+
+	for _, target := range input.Targets {
+		if target.ID != nil {
+			_, err := q.UpdateCollectionTarget(ctx, generated.UpdateCollectionTargetParams{ID: *target.ID, CollectionID: id, Name: target.Name, Instruction: target.Instruction})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			targetID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionTarget(ctx, generated.AppendCollectionTargetParams{ID: targetID, CollectionID: id, Name: target.Name, Instruction: target.Instruction}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
 	}
 	if q.RecordCollectionUpdate(ctx, generated.RecordCollectionUpdateParams{UserID: owner, RequestKey: key, CollectionID: pgtype.Text{String: id, Valid: true}, InputDigest: digest[:], ResultVersion: version}) != nil {
 		return empty, domain.ErrCollectionStore

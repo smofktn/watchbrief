@@ -15,3 +15,13 @@ RETURNING version;
 -- name: RecordCollectionUpdate :exec
 INSERT INTO app.collection_update_requests(user_id, request_key, collection_id, input_digest, result_version)
 VALUES ($1, $2, $3, $4, $5);
+
+-- name: UpdateCollectionTarget :one
+UPDATE app.watch_targets SET name = $3, instruction = $4, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2
+RETURNING id;
+
+-- name: AppendCollectionTarget :exec
+INSERT INTO app.watch_targets(id, collection_id, name, instruction, enabled, display_order)
+SELECT $1, $2, $3, $4, true, COALESCE(MAX(display_order), -1) + 1
+FROM app.watch_targets WHERE collection_id = $2;
