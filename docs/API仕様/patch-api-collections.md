@@ -112,3 +112,13 @@ versionはその要求が保存した版であり、最新の版を保証しな�
 本人単位transaction advisory lockを共有し、本体条件付き更新・対象変更・情報源追加/編集・全体版1増加・要求記録を同一transactionで保存する。情報源編集だけでも全体版を増やし、旧本体/対象要求からの古い版保存は409とする。どの段階の失敗も全rollback。成功応答・認証/CSRF・所有者404・競合/結果不明/再試行契約は既存と同じ。履歴・snapshot・要求記録の過去digestは変更しない。
 
 解析資料：[Go net/url](https://pkg.go.dev/net/url#Parse)、[URLのユーザー名](https://developer.mozilla.org/en-US/docs/Web/API/URL/username)。これらのパーサーを使うだけで入力条件やSSRFを保証するものではない。
+
+## Schedule追加・編集
+
+任意の `schedule: {"id": null, "cron_expression": "0 7 * * *"}` で追加、既存ULIDのidで編集する。キーはこの2つだけで必須、重複・未知キー・型不正を拒否する。省略は変更なし。schedule:null、空式による削除は受け付けない。既にScheduleがあるCollectionへのid:null追加は409 update_conflict、別Collection/不存在のSchedule idは404。既存全体版・本人lock・要求番号・原子的保存を共有する。省略時のdigest直列化は従来と同じで、旧保存済要求の再送は変更しない。
+
+日本時間（Asia/Tokyo）固定、5欄は分0–59・時0–23・日1–31・月1–12・曜日0–7（0/7は日曜）。数値、*、カンマ列挙、昇順範囲a-b、*/n・a-b/nを受理する。nは1以上かつ各欄の最大値以下。数値は先頭0可。秒、年、TZ指定、alias、英語名、?・L・W・#、数値単体/n、逆順範囲、空要素は拒否。256 ASCII文字以内、半角space/tabで5欄を区切り、前後/連続space/tabは許容し入力のまま保存する。改行・他の空白は拒否する。未変更の保存済式は再検証しない。実在日の有無・次回予定はこの構文検証では判定しない（例: 2月31日は受理）。
+
+将来#19の共通契約：分・時・月はすべて一致。日または曜日の欄が*で始まる場合（*/nを含む）は日と曜日をAND、それ以外で両方指定時はOR。stepは各欄の範囲内でのみ進め、経過時間間隔ではない。[Vixie cronの一次資料](https://man.openbsd.org/man5/crontab.5)に沿う限定構文として、依存追加なしのGo/TS validatorと共通fixtureで検証する。#19の時刻計算実装はこの契約を再利用して検証する。
+
+例：`0 7 * * *` は毎日7時、`0 7,19 * * *` は毎日7時と19時。祝日除外なし。保存時にJobを作らず、既存scheduled_at/input_snapshot/Reportも変えない。Scheduleを含め本文合計1MiB、既存の対象20変更行・情報源20変更行を維持する。

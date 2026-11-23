@@ -142,3 +142,9 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 情報源の追加/編集もCollection全体の変更とする。本体・対象と一括確定し、同一要求の再試行で重複作成しない。保存済み対象への所属を必須とし、情報源移動・削除は今回扱わない。0件・同一URLを許可し、作成済み履歴/snapshotを変更しない。
 
 入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+## Schedule一括保存への拡張
+
+停止中CollectionのSchedule追加・cron式編集を既存PATCHへ含める。省略は維持、削除は後続。本人transaction advisory lock・停止状態・全体版を検証し、本体・対象・情報源・Schedule・版1増加・要求記録を原子的に保存する。追加IDはAPIで生成し再送では再生成しない。Collection所属を検証し、collection_idの一意性を維持する。既存Job/Attempt/Reportは更新しない。版13でScheduleの必要列INSERT/UPDATEだけを追加し、旧migrationは変更しない。
+
+受理cron構文と#19の予定判定に共用する意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。保存は生成を開始しない。

@@ -429,3 +429,9 @@ commit済み要求の再送では新規IDを生成せず元の成功結果を返
 既存information_sourcesの列/外部キー/索引を使用し、追加migrationでAPIへ必要列INSERT(id,watch_target_id,name,url,instruction)とUPDATE(name,url,instruction,updated_at)だけを付与する。DELETE・親ID/ID変更の権限は付与しない。旧migration・既存データ・過去要求は変更しない。所属検証はCollection→対象→情報源の条件を持つSQLで行う。本体・対象・情報源・全体版・更新要求は既存本人単位lockの同一transactionで確定する。通常起動/配備へのmigration自動適用は追加しない。
 
 入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+## Schedule一括保存への拡張
+
+停止中CollectionのSchedule追加・cron式編集を既存PATCHへ含める。省略は維持、削除は後続。本人transaction advisory lock・停止状態・全体版を検証し、本体・対象・情報源・Schedule・版1増加・要求記録を原子的に保存する。追加IDはAPIで生成し再送では再生成しない。Collection所属を検証し、collection_idの一意性を維持する。既存Job/Attempt/Reportは更新しない。版13でScheduleの必要列INSERT/UPDATEだけを追加し、旧migrationは変更しない。
+
+受理cron構文と#19の予定判定に共用する意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。保存は生成を開始しない。
