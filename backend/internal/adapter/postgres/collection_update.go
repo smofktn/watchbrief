@@ -93,6 +93,30 @@ func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key st
 			}
 		}
 	}
+	for _, source := range input.Sources {
+		if _, err := q.CollectionSourceTarget(ctx, generated.CollectionSourceTargetParams{ID: source.WatchTargetID, CollectionID: id}); errors.Is(err, pgx.ErrNoRows) {
+			return empty, domain.ErrResourceNotFound
+		} else if err != nil {
+			return empty, domain.ErrCollectionStore
+		}
+		if source.ID != nil {
+			_, err := q.UpdateCollectionSource(ctx, generated.UpdateCollectionSourceParams{ID: *source.ID, WatchTargetID: source.WatchTargetID, Name: source.Name, Url: source.URL, Instruction: source.Instruction})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			sourceID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionSource(ctx, generated.AppendCollectionSourceParams{ID: sourceID, WatchTargetID: source.WatchTargetID, Name: source.Name, Url: source.URL, Instruction: source.Instruction}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
+	}
 	if q.RecordCollectionUpdate(ctx, generated.RecordCollectionUpdateParams{UserID: owner, RequestKey: key, CollectionID: pgtype.Text{String: id, Valid: true}, InputDigest: digest[:], ResultVersion: version}) != nil {
 		return empty, domain.ErrCollectionStore
 	}

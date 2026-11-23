@@ -14,6 +14,7 @@ type CollectionUpdate struct {
 	NewCollection
 	Version string         `json:"version"`
 	Targets []TargetChange `json:"targets,omitempty"`
+	Sources []SourceChange `json:"sources,omitempty"`
 }
 
 // Decimal strings avoid loss of bigint precision in browser JSON.
@@ -44,6 +45,25 @@ func (input CollectionUpdate) Validate() error {
 		text := NewCollection{Name: target.Name, ResearchInstruction: target.Instruction, InitialLookbackMode: "ai"}
 		if err := text.Validate(); err != nil {
 			return &CollectionInputError{Fields: map[string]string{fmt.Sprintf("targets.%d", i): "対象名は1〜200文字、補足指示は10,000文字以内で入力してください。"}}
+		}
+	}
+	if len(input.Sources) > 20 {
+		return &CollectionInputError{Fields: map[string]string{"sources": "1回に保存できる情報源変更は20行までです。"}}
+	}
+	sourceIDs := map[string]bool{}
+	for _, source := range input.Sources {
+		if !ValidIdentifier(source.WatchTargetID) {
+			return ErrInvalidIdentifier
+		}
+		if source.ID != nil {
+			if !ValidIdentifier(*source.ID) || sourceIDs[*source.ID] {
+				return ErrInvalidIdentifier
+			}
+			sourceIDs[*source.ID] = true
+		}
+		text := NewCollection{Name: source.Name, ResearchInstruction: source.Instruction, InitialLookbackMode: "ai"}
+		if text.Validate() != nil || !ValidSourceURL(source.URL) {
+			return &CollectionInputError{Fields: map[string]string{"sources": "情報源の表示名・URL・補足指示を確認してください。"}}
 		}
 	}
 	return nil

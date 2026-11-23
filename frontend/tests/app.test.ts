@@ -810,3 +810,128 @@ describe('Collection and target atomic editing', () => {
     expect(JSON.parse(sent[0][1].body as string).targets).toHaveLength(20)
   })
 })
+
+describe('Collection source atomic editing', () => {
+  const source = { id, name: '<b>既存情報源</b>', url: 'https://EXAMPLE.com/Original', instruction: '' }
+  const target = { id: otherId, name: '保存済み対象', instruction: '', enabled: true, display_order: 0, sources: [source] }
+  test('submits only changed sources with body/target; preserves raw URL and freezes exact retry', async () => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, targets: [target] })
+    })
+    expect(app.find('b').exists()).toBe(false)
+    expect(app.find('a[href^="https:"]').exists()).toBe(false)
+    await click('編集')
+    await app.get('#collection-name').setValue('本体変更')
+    await app.get('#target-name-0').setValue('対象変更')
+    await click('情報源を追加')
+    const names = app.findAll('input[id^="source-name-"]')
+    const urls = app.findAll('input[id^="source-url-"]')
+    await names[1].setValue('新規情報源')
+    await urls[1].setValue('https://EXAMPLE.com/New?q=日本語')
+    await click('保存')
+    const body = JSON.parse(attempts[0].body as string)
+    expect(body).toMatchObject({ name: '本体変更', targets: [{ id: otherId, name: '対象変更' }], sources: [{ id: null, watch_target_id: otherId, name: '新規情報源', url: 'https://EXAMPLE.com/New?q=日本語', instruction: '' }] })
+    expect(body.sources).toHaveLength(1)
+    expect(app.findAll('fieldset').every(field => (field.element as HTMLFieldSetElement).disabled)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+  })
+  test('validates URL, cancels only new sources, and keeps new target restriction visible', async () => {
+    const { app, fetch } = await start(`/collections/${id}`, path => path === '/api/me' ? me() : response({ ...collection, targets: [target] }))
+    await click('編集')
+    expect(app.findAll('button').some(b => b.text() === '情報源の追加を取り消す')).toBe(false)
+    await app.get('input[id^="source-url-"]').setValue('https://user:pass@example.com')
+    await click('保存')
+    expect(app.text()).toContain('認証情報')
+    expect(document.activeElement?.id).toMatch(/^source-url-/)
+    expect(fetch.mock.calls.filter(([,o]) => o.method === 'PATCH')).toHaveLength(0)
+    await click('情報源を追加')
+    await click('情報源の追加を取り消す')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(1)
+    await click('対象を追加')
+    expect(app.text()).toContain('対象を保存してから情報源を追加')
+  })
+  test('conflict preserves sources and compares latest values; explicit restart drops all new drafts', async () => {
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { return response({ error: { code: 'update_conflict' } }, 409) }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', targets: [{ ...target, sources: [{ ...source, name: reads === 1 ? source.name : '先行情報源', url: 'https://example.com/latest' }] }] })
+    })
+    await click('編集')
+    await app.get('input[id^="source-name-"]').setValue('保持する編集')
+    await click('情報源を追加')
+    await app.findAll('input[id^="source-name-"]')[1].setValue('保持する新規')
+    await app.findAll('input[id^="source-url-"]')[1].setValue('https://example.com/new')
+    await click('保存')
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('先行情報源')
+    expect(app.get('.latest-settings').text()).toContain('https://example.com/latest')
+    expect((app.get('input[id^="source-name-"]').element as HTMLInputElement).value).toBe('保持する編集')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(2)
+    await click('最新値で編集し直す')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(1)
+    expect((app.get('input[id^="source-name-"]').element as HTMLInputElement).value).toBe('先行情報源')
+  })
+  test.each(['route', 'cancel', 'logout'])('clears source drafts on %s and discards delayed save', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/logout') { return response(null, 204) }
+      if (options.method === 'PATCH') { return pending.promise }
+      return response({ ...collection, targets: [target] })
+    })
+    await click('編集')
+    await app.get('input[id^="source-name-"]').setValue('遅い情報源下書き')
+    await app.get('form').trigger('submit')
+    await flushPromises()
+    if (action === 'route') { await router.push('/me') } else { await click(action === 'cancel' ? '詳細へ戻る' : 'ログアウト') }
+    await flushPromises()
+    pending.resolve(response({ id, version: '2' }))
+    await flushPromises()
+    expect(app.find('input[id^="source-name-"]').exists()).toBe(false)
+    expect(app.text()).not.toContain('遅い情報源下書き')
+  })
+})
+
+test('untouched legacy source values do not block body/target edits or get resubmitted', async () => {
+  const legacy = { id, name: '旧情報源', url: 'legacy-url-value', instruction: '' }
+  const target = { id: otherId, name: '旧対象', instruction: '', enabled: false, display_order: 0, sources: [legacy] }
+  const attempts: RequestInit[] = []
+  const { app } = await start(`/collections/${id}`, (path, options) => {
+    if (path === '/api/me') { return me() }
+    if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+    return response({ ...collection, targets: [target] })
+  })
+  await click('編集')
+  await app.get('#collection-name').setValue('旧情報源を維持して本体編集')
+  await app.get('#target-name-0').setValue('対象も編集')
+  await click('保存')
+  expect(attempts).toHaveLength(1)
+  expect(JSON.parse(attempts[0].body as string).sources).toBeUndefined()
+})
+
+test('source change count spans all targets and does not cap registration count', async () => {
+  const sources = Array.from({ length: 21 }, (_, i) => ({ id: `000000000000000000000000${String(i).padStart(2, '0')}`, name: '情報源', url: 'https://example.com', instruction: '' }))
+  const target = { id: otherId, name: '対象', instruction: '', enabled: true, display_order: 0, sources }
+  const attempts: RequestInit[] = []
+  const { app } = await start(`/collections/${id}`, (path, options) => {
+    if (path === '/api/me') { return me() }
+    if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+    return response({ ...collection, targets: [target] })
+  })
+  await click('編集')
+  expect(app.findAll('input[id^="source-name-"]')).toHaveLength(21)
+  for (const name of app.findAll('input[id^="source-name-"]')) { await name.setValue('変更') }
+  await click('保存')
+  expect(attempts).toHaveLength(0)
+  expect(app.text()).toContain('情報源の追加・変更は20行まで')
+  await app.findAll('input[id^="source-name-"]')[20].setValue('情報源')
+  await click('保存')
+  expect(JSON.parse(attempts[0].body as string).sources).toHaveLength(20)
+  expect(JSON.parse(attempts[0].body as string).targets).toBeUndefined()
+})

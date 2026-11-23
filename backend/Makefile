@@ -15,7 +15,7 @@ export APP_ORIGIN API_ADDR API_PASSWORD_FILE LOGIN_ID DB_PASSWORD_FILE
 CURRENT_PACKAGES := ./...
 COVERAGE_DIR := $(PROJECT_ROOT)/.local/coverage/backend
 
-.PHONY: verify-collection-targets verify-collection-update verify-collection-creation verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test coverage test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+.PHONY: verify-collection-sources verify-collection-targets verify-collection-update verify-collection-creation verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test coverage test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,7 @@ help:
 	  '  make dev                  API起動（APP_ORIGINで画面Originを指定可能）' \
 	  '  make deps                 Go依存をlock情報に従って取得' \
 	  '  make build                APIとUser作成・再設定CLIを.local/binへビルド' \
+	  '  make verify-collection-sources   使い捨てDBで情報源の一括保存と画面を検証' \
 	  '  make verify-collection-targets   使い捨てDBで本体・対象の一括保存と画面を検証' \
 	  '  make verify-collection-update    使い捨てDBで本体編集・競合・再試行・画面を検証' \
 	  '  make verify-collection-creation  使い捨てDBで新規保存・同時再試行・画面を検証' \
@@ -179,6 +180,9 @@ verify-collection-creation: build
 
 verify-collection-update: build
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-update
+
+verify-collection-sources: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-sources
 
 verify-collection-targets: build
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-targets

@@ -212,3 +212,9 @@ make verify-collection-update
 停止中Collectionの本体と、対象名・任意の補足指示の追加・編集を既存PATCHで原子的に保存する。新規対象はONで末尾へ追加し、既存の状態・順序・情報源は維持する。通常起動前にgoose版11を既存の `make db-migrate` で明示適用する必要がある。この変更や `make dev` が通常DBや#21配備版へ自動適用することはない。既存migrationは変更しない。
 
 追加検証入口はルートの `make verify-collection-targets`。`make backend-deps frontend-install tools-install` で依存と既定版ツールを準備する。専用Compose project・空きポート・架空User/設定/履歴だけで新規構築、旧データの保持、APIの並列更新/再送、所有者非開示、巻き戻しと再試行、最小権限、実Chromiumを検証し、専用volumeと秘密ファイルを除去する。ChromiumはPATH・既存Playwright cache・CHROMIUM_BINから検出する。不足共有ライブラリは必要ならBROWSER_LIBRARY_PATHへ別途指定する。通常DBを起動・停止・初期化しない。検証結果はIssue/PRへ記録する。
+
+### 情報源の一括保存（Issue #80）
+
+停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](../docs/API仕様/patch-api-collections.md)を参照。
+
+検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。

@@ -5,6 +5,7 @@ import { errorCode, jsonBody, request } from '../../api'
 import { useSession } from '../auth/session'
 import { isCollection, isCollectionVersion, type Collection } from './data'
 import { validateCollectionForm } from './form'
+import { newSource, sourceChanges, validateSources } from './sourceForm'
 import { targetChanges, targetDrafts, validateTargets, type TargetDraft } from './targetForm'
 
 export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: () => void) => {
@@ -57,14 +58,23 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     if (!checking && !retrying) {
       const bodyValid = validateCollectionForm(form, fields)
       const targetsValid = validateTargets(targets)
-      if (!bodyValid || !targetsValid) {
+      const allSources = targets.flatMap(target => target.sources)
+      // Legacy stored values are preserved unless the user edits that source.
+      for (const source of allSources) { source.error = ''; source.errorField = '' }
+      const sourcesValid = validateSources(allSources.filter(source => sourceChanges([source], baseline).length > 0))
+      if (!bodyValid || !targetsValid || !sourcesValid) {
         await nextTick()
-        document.getElementById(!bodyValid ? (fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days') : `target-name-${targets.findIndex(target => target.error)}`)?.focus()
+        document.getElementById(!bodyValid ? (fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days') : !targetsValid ? `target-name-${targets.findIndex(target => target.error)}` : `source-${allSources.find(source => source.error)?.errorField}-${allSources.find(source => source.error)?.key}`)?.focus()
         return
       }
       const changes = targetChanges(targets, baseline)
       if (changes.length > 20) {
         message.value = '1回に保存できる対象の追加・変更は20行までです。変更を減らして保存してください。'
+        return
+      }
+      const sources = sourceChanges(targets.flatMap(target => target.sources), baseline)
+      if (sources.length > 20) {
+        message.value = '1回に保存できる情報源の追加・変更は20行までです。変更を減らして保存してください。'
         return
       }
       try {
@@ -73,7 +83,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
         message.value = '保存を準備できません。詳細へ戻って再度お試しください。'
         return
       }
-      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version, ...(changes.length ? { targets: changes } : {}) })
+      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version, ...(changes.length ? { targets: changes } : {}), ...(sources.length ? { sources } : {}) })
       if (new TextEncoder().encode(payload).length > 1048576) {
         key = ''; payload = ''
         message.value = '保存する内容が大きすぎます。入力を減らしてください。'
@@ -127,7 +137,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
           uncertain.value = false
           key = ''; payload = ''
         }
-        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容を確認してください。名前は1〜200文字、調査方針・対象の補足指示は10,000文字以内、対象名は1〜200文字、日数は1〜365日です。' : '送信元を確認できません。詳細へ戻って確認してください。'
+        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容と各欄の条件を確認してください。情報源URLはHTTP/HTTPSで、認証情報を含めず入力してください。' : '送信元を確認できません。詳細へ戻って確認してください。'
       } else {
         message.value = '保存結果を確認できません。同じ内容で再試行してください。'
       }
@@ -162,7 +172,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
       message.value = '1回に保存できる対象の追加・変更は20行までです。先に保存してください。'
       return
     }
-    targets.push({ id: null, name: '', instruction: '', error: '' })
+    targets.push({ id: null, name: '', instruction: '', error: '', sources: [] })
     await nextTick()
     document.getElementById(`target-name-${targets.length - 1}`)?.focus()
   }
@@ -172,5 +182,24 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     await nextTick()
     document.getElementById('targets-title')?.focus()
   }
-  return { targets, addTarget, removeTarget, form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
+  const addSource = async (index: number) => {
+    const target = targets[index]
+    if (busy.value || uncertain.value || conflict.value || terminal.value || !target?.id) { return }
+    if (sourceChanges(targets.flatMap(item => item.sources), baseline).length >= 20) {
+      message.value = '1回に保存できる情報源の追加・変更は20行までです。先に保存してください。'
+      return
+    }
+    const source = newSource(target.id)
+    target.sources.push(source)
+    await nextTick()
+    document.getElementById(`source-name-${source.key}`)?.focus()
+  }
+  const removeSource = async (targetIndex: number, sourceIndex: number) => {
+    const target = targets[targetIndex]
+    if (busy.value || uncertain.value || conflict.value || terminal.value || target?.sources[sourceIndex]?.id !== null) { return }
+    target.sources.splice(sourceIndex, 1)
+    await nextTick()
+    document.getElementById(`sources-title-${targetIndex}`)?.focus()
+  }
+  return { targets, addSource, removeSource, addTarget, removeTarget, form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
 }

@@ -2,7 +2,7 @@
 
 ## 目的と採用状況
 
-認証済みUserが自分の保存済みCollection設定を読む。#17の順次実装の委任に基づく実装判断として、一覧を `GET /api/collections`、詳細を `GET /api/collections/{id}` とした。本体の追加は[作成API](post-api-collections.md)、本体・対象の変更は[更新API](patch-api-collections.md)、削除等は#18の後続範囲で扱う。
+認証済みUserが自分の保存済みCollection設定を読む。#17の順次実装の委任に基づく実装判断として、一覧を `GET /api/collections`、詳細を `GET /api/collections/{id}` とした。本体の追加は[作成API](post-api-collections.md)、本体・対象・情報源の変更は[更新API](patch-api-collections.md)、削除等は#18の後続範囲で扱う。
 
 認証は[共通のCookie方式](README.md#共通の認証と秘密情報)を使う。APIがCookieのハッシュから所有UserのIDを取得し、そのIDをSQLの所有者条件へ渡す。リクエストに指定された `user_id` を所有者として使わず、レスポンスにも所有User IDや認証情報を含めない。単なるULIDの推測困難性を認可の代わりにしない。
 

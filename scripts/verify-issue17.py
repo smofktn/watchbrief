@@ -29,7 +29,8 @@ def free_port():
 
 
 def main():
-    targets = sys.argv[1:] == ['--collection-targets']
+    sources = sys.argv[1:] == ['--collection-sources']
+    targets = sources or sys.argv[1:] == ['--collection-targets']
     updating = targets or sys.argv[1:] == ['--collection-update']
     creation = updating or sys.argv[1:] == ['--collection-creation']
     if sys.argv[1:] and not creation:
@@ -115,10 +116,15 @@ def main():
                 assert sql("SELECT to_jsonb(r)::text FROM app.collection_creation_requests r") == saved_request
                 sql("INSERT INTO app.collection_update_requests(user_id,request_key,collection_id,input_digest,result_version) VALUES ('00000000000000000000000021','00112233-4455-4677-8899-aabbccddeeff','00000000000000000000000022',decode(repeat('cd',32),'hex'),2);")
                 saved_v10 = {table: sql('SELECT to_jsonb(t)::text FROM app.' + table + ' t') for table in ('collections', 'collection_creation_requests', 'collection_update_requests')}
-                for p, content in upgrades.items():
-                    p.write_text(content)
-                script('migrate-postgres.py', 'up')
-                assert all(sql('SELECT to_jsonb(t)::text FROM app.' + table + ' t') == value for table, value in saved_v10.items())
+                for version in sorted({int(p.name.split('_')[0]) for p in upgrades if int(p.name.split('_')[0]) > 10}):
+                    for p, content in upgrades.items():
+                        if int(p.name.split('_')[0]) == version:
+                            p.write_text(content)
+                    script('migrate-postgres.py', 'up')
+                    assert all(sql('SELECT to_jsonb(t)::text FROM app.' + table + ' t') == value for table, value in saved_v10.items())
+                    if version == 11:
+                        sql("INSERT INTO app.watch_targets(id,collection_id,name) VALUES ('00000000000000000000000023','00000000000000000000000022','架空の移行対象'); INSERT INTO app.information_sources(id,watch_target_id,name,url) VALUES ('00000000000000000000000024','00000000000000000000000023','架空の既存情報源','https://example.com/original');")
+                        saved_v10.update({table: sql('SELECT to_jsonb(t)::text FROM app.' + table + ' t') for table in ('watch_targets','information_sources')})
                 sql("DELETE FROM app.collection_update_requests; DELETE FROM app.collection_creation_requests; DELETE FROM app.collections; DELETE FROM app.users;")
                 print('Version 9 to 10 and 10 to current: existing settings/creation/update records preserved: passed', flush=True)
             script('migrate-postgres.py', 'up')
@@ -224,6 +230,8 @@ def main():
                     runpy.run_path(str(stage / 'scripts/verify-collection-update.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
                 if targets:
                     runpy.run_path(str(stage / 'scripts/verify-collection-targets.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
+                if sources:
+                    runpy.run_path(str(stage / 'scripts/verify-collection-sources.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
@@ -259,7 +267,7 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
                 output.flush()
@@ -274,7 +282,7 @@ def main():
                 hashes += [row['password_hash'] for row in json.loads(before)]
                 token_hashes = sql("SELECT string_agg(encode(token_hash,'hex'),chr(10)) FROM app.auth_sessions").splitlines()
                 token_hashes += [hashlib.sha256(base64.urlsafe_b64decode(token + '=')).hexdigest() for token in tokens]
-                content = json.loads(sql("SELECT json_build_array((SELECT json_agg(research_instruction) FROM app.collections),(SELECT json_agg(body_markdown) FROM app.reports),(SELECT json_agg(name) FROM app.watch_targets),(SELECT json_agg(instruction) FROM app.watch_targets))::text"))
+                content = json.loads(sql("SELECT json_build_array((SELECT json_agg(research_instruction) FROM app.collections),(SELECT json_agg(body_markdown) FROM app.reports),(SELECT json_agg(name) FROM app.watch_targets),(SELECT json_agg(instruction) FROM app.watch_targets),(SELECT json_agg(name) FROM app.information_sources),(SELECT json_agg(url) FROM app.information_sources),(SELECT json_agg(instruction) FROM app.information_sources))::text"))
                 # Empty optional instructions cannot be searched as private content.
                 private_content = [value for group in content for value in (group or []) if value]
                 forbidden = private_content + passwords + tokens + hashes + token_hashes + [auth_marker, '127.0.0.1', 'postgresql://', 'postgres://', '$argon2id$', 'Authorization', 'Cookie', 'watchbrief_session', '架空コレクション', '外部取得を行わない検証用。', '# 架空の保存済みReport']

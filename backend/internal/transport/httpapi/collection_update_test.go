@@ -108,3 +108,15 @@ func TestTargetChangeStrictJSON(t *testing.T) {
 		t.Fatal("valid JSON above old limit rejected by parser")
 	}
 }
+
+func TestSourceChangeStrictJSON(t *testing.T) {
+	valid := `{"id":null,"watch_target_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","name":"架空","url":"https://example.com","instruction":""}`
+	if _, err := readSourceChange([]byte(valid)); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{`null`, `[]`, `{}`, `{"id":null,"watch_target_id":"x","name":"x","url":"x","instruction":"","extra":1}`, `{"id":null,"id":null,"watch_target_id":"x","name":"x","url":"x","instruction":""}`, `{"id":null,"watch_target_id":null,"name":"x","url":"x","instruction":""}`, `{"id":null,"watch_target_id":"x","name":"x","url":null,"instruction":""}`, valid + `{}`} {
+		if _, err := readSourceChange([]byte(body)); err == nil {
+			t.Fatal("invalid source JSON accepted")
+		}
+	}
+}

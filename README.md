@@ -106,3 +106,9 @@ Collection本体の新規作成は一覧の「新規作成」から操作しま�
 Collection本体の編集は版10の明示migration後、停止中の詳細から操作します。事前の隔離検証は `make verify-collection-update`。[操作・検証手順](backend/README.md#collection本体の編集issue-74)を参照してください。
 
 停止中Collection本体とWatchTargetの追加・編集をまとめて保存する手順は[Frontend](frontend/README.md#collectionと対象の一括編集issue-78)、版11の明示migrationと隔離検証 `make verify-collection-targets` は[Backend](backend/README.md#本体とwatchtargetの一括保存issue-78)を参照してください。通常起動・#21の配備への自動migrationは行いません。
+
+### 情報源の一括保存（Issue #80）
+
+停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](docs/API仕様/patch-api-collections.md)を参照。
+
+検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
