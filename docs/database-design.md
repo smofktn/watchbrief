@@ -413,3 +413,19 @@ collection_update_requestsはuser_id（usersへRESTRICT）、request_key（小�
 APIに追加する権限は、本体のname・research_instruction・initial_lookback_mode・initial_lookback_days・version・updated_atの列UPDATEと更新要求記録のSELECT/INSERTだけ。enabled・display_order・所有者・作成日時・ID、配下設定、生成履歴、作成要求記録には更新権限を与えない。所有者条件は引き続きアプリが担い、DB権限だけでUser分離を保証しない。元の作成要求のinput_digestは編集後も元の入力に対応する。
 
 版10のDownは版と再試行記録を削除するため通常操作に含めない。旧版は編集せず、通常起動への自動migrationを追加しない。[更新API](API仕様/patch-api-collections.md)と[検証入口](../backend/README.md#collection本体の編集issue-74)を参照する。
+
+## WatchTarget追加・編集の設計範囲（Issue #18）
+
+[合意した入力範囲](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)は既存watch_targetsのname・instructionに対応する。現行APIの配下SELECT権限だけでは追加・編集できないため、合意する保存契約に応じて必要列の権限と追加migrationを検討する。既存migration・通常DBを変更せず、新migrationを通常起動・#21の配備へ自動適用しない。
+
+Collection全体の版で競合を検出し、同じ要求の再送で重複追加しない方式に合意した。対象の保存とCollectionの版・updated_at・要求記録を同一transactionで整合させる。既存ロック・要求記録・入力制約・表示順の具体的な扱いは以下で具体化する。既存本体編集の再試行記録や作成要求記録を改変せず、新旧要求の衝突を防ぐ設計を具体化する。
+
+本体と対象の変更を一括確定し、新規対象はenabled=true、既存対象のenabledは変更しない方針に合意した。現行watch_targets.enabledの既定falseだけではこの追加経路を表せないため、APIが新規行の値を設定するための最小権限を検討する。既定値の変更や既存行の一括更新を意味しない。保存API・再試行記録・追加migrationはまだ実装しない。
+
+### 保存構造の具体案（合意済み・実装前）
+
+既存の本人単位transaction advisory lockとcollection_update_requestsを共有する。本体・対象変更・版の1増加・要求記録は同じtransactionで確定する。既存対象は認証済みUserのCollection所属を検査し、name・instruction・updated_atだけを変更する。別Collectionの対象は他者所有／不存在と同じ404とする。新規対象はAPI側でULIDを生成し、enabled=true、既存の最大display_orderの次へ追加する。既存対象の状態・順序・情報源は更新しない。
+
+新規IDはcommit済み要求の再送時には生成せず、要求記録の元の成功結果を返して詳細を再取得する。digestは任意フィールドのomitemptyで旧形式を維持し、新形式のみ対象変更を含める。旧形式の成功要求も再送可能とする。対象保存・要求記録挿入・版上限等の失敗は全rollbackとする。
+
+必要列INSERT（id・collection_id・name・instruction・enabled・display_order）とUPDATE（name・instruction・updated_at）だけを新しい番号のmigrationでAPIへ付与する。対象削除・有効状態更新・履歴更新・要求記録UPDATEは付与しない。初期検証は隔離DBで行い、通常DBと#21配備版への適用は含めない。

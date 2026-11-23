@@ -130,3 +130,9 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 ## 保存履歴を読む最初の実装（Issue #57）
 
 管理seedがJob・Attemptの成功とReport一式を原子的に保存し、アプリは保存済み本文を読む。所有者は必須のJob.user_idで確定し、Collectionの現在の有無に依存しない。本文は構造化データと同じDBを正本とする。生成・状態遷移を実行するWorkerは #19の対象であり、seedは生成処理の代用仕様ではない。[物理制約](database-design.md#保存reportの物理化issue-57)と[最小閲覧](画面仕様/保存済みReportの取得.md)を参照する。
+
+## WatchTarget追加・編集の設計範囲（Issue #18）
+
+[次の合意範囲](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)は停止中Collection配下の対象名・任意の補足指示の追加と編集である。対象は情報源なしでも保存できる。現在設定の変更で作成済みJob・Reportを変更しない。Collection全体の版で本体・対象への先行更新を検出する。競合時は本体・対象の下書きを保持して保存を止め、最新値から編集し直す。項目単位の自動統合はしない。同一保存要求の再送で対象を重複作成しない。
+
+保存単位は本体と対象の変更を一括とする方式に合意した。新規対象は有効として追加し、既存対象の有効状態は維持する。対象の有効状態の切替操作とCollectionの有効化は今回の範囲に含めない。停止中Collectionでは有効対象があっても新規生成しない。

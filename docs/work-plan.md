@@ -156,3 +156,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 利用者の依頼に基づき、次の検討対象として子Issue [#74](https://github.com/smofktn/watchbrief/issues/74)「既存Collection本体の編集・保存・再表示」を選定した。最初の正常系は、作成済みの停止中Collectionで名前・調査方針・初回確認期間を変更し、保存後の詳細・一覧・再読み込みで確認する経路とする。競合時は入力を保持して保存を止め、最新値を確認して編集し直す方針に合意した。版番号と更新要求番号で競合と同一保存操作の再試行を区別する方式にも合意し、本体編集の実装・検証を進める。具体契約は[更新API](API仕様/patch-api-collections.md)と[編集画面](画面仕様/コレクション本体の編集.md)へ記録する。現在の合意範囲は[本体編集の仕様](product-definition.md#collection本体の編集issue-74)を参照する。
 
 その後は、配下設定の編集、有効化・削除・並べ替え、履歴・ホームの閲覧、安全なMarkdown表示を動作確認できるまとまりで進める案とする。後続工程の一括実装や、残りの子Issue・PRの分け方はまだ合意していない。
+
+## Issue #18の次の確認範囲（範囲合意済み）
+
+停止中Collection配下のWatchTargetの対象名・任意の補足指示の追加と編集を扱う。[合意範囲と未決定事項](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)を参照する。具体的な画面・API・子Issue範囲は相談中で、未合意の機能実装は進めない。子PRは既存方針どおり#18をbaseとする。
+
+合意したWatchTarget一括保存は子Issue [#78](https://github.com/smofktn/watchbrief/issues/78)で実装・検証・セルフレビューする。親#18の設計commitから子#78を作り、PRのbaseは#18とする。

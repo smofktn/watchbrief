@@ -918,3 +918,11 @@ Frontendは新規ページと専用composableを追加し、既存の単一sessi
 HTTPのPATCH境界は既存のCSRF・Cookie・厳密JSONを扱い、UpdateCollectionユースケースが所有者・入力を確認する。PostgreSQL adapterは既存作成と共有する本人単位のtransaction advisory lockを取り、所有行・要求記録を確認する。版一致・停止中の条件付きUPDATE、版増加、要求記録をRead Committedの同じtransactionで確定する。再送では元結果だけを返し、現在値を再更新しない。将来の更新も版を進め、同じ要求空間・排他との整合を守る必要がある。
 
 認証・消去・遅延応答破棄と現在設定/生成履歴の境界を維持する。更新は認証通過後に完了し得る。通信契約は[更新API](API仕様/patch-api-collections.md)、保存構造は[DB設計](database-design.md#collection本体の編集issue-74)、利用者操作は[編集画面](画面仕様/コレクション本体の編集.md)を参照する。
+
+## WatchTarget追加・編集の設計範囲（Issue #18）
+
+[合意した範囲と最小正常系](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)に沿い、既存詳細取得を使って追加・編集後の現在値を確認する。具体的な画面配置・API契約は未決定で、実装はまだ行わない。既存の認証境界と現在設定／生成履歴の境界を維持する。
+
+配下更新時のCollectionの版増加、既存の本人単位advisory lockと要求番号空間の整合、対象保存・版更新・要求記録の原子性を設計対象とする。具体的な保存構造は採用決定と区別して記録する。
+
+画面の保存単位は合意済みで、既存詳細の編集モードから本体と対象の変更をまとめて保存する。全体の入力保持と一括確定を扱う。新規対象のONは将来の生成対象であることを表し、停止中Collectionで生成を開始する操作ではない。Collection全体の版と更新要求番号で先行更新と同一保存操作の再試行を区別する方式に合意した。具体的なJSONと要求記録の拡張は設計中とする。
