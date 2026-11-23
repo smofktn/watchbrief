@@ -110,3 +110,44 @@ func TestUpdateTargetValidationAndLegacyDigest(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceDigestBindingAndTargetCompatibility(t *testing.T) {
+	id := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	const key = "00112233-4455-4677-8899-aabbccddeeff"
+	s := &updateStoreStub{}
+	uc := UpdateCollection{Store: s}
+	input := domain.CollectionUpdate{NewCollection: domain.NewCollection{Name: "架空", InitialLookbackMode: "ai"}, Version: "1", Targets: []domain.TargetChange{{Name: "対象", Instruction: ""}}}
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	expected := sha256.Sum256([]byte(`{"id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1","targets":[{"id":null,"name":"対象","instruction":""}]}`))
+	if s.digest != expected {
+		t.Fatal("legacy target digest changed")
+	}
+	input.Sources = []domain.SourceChange{{WatchTargetID: id, Name: "情報源", URL: "https://example.com", Instruction: ""}}
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	previous := s.digest
+	if previous == expected {
+		t.Fatal("source not bound")
+	}
+	input.Sources[0].URL = "https://example.com/new"
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	if previous == s.digest {
+		t.Fatal("URL not bound")
+	}
+	previous = s.digest
+	input.Sources[0].WatchTargetID = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	if previous == s.digest {
+		t.Fatal("source parent not bound")
+	}
+	previous = s.digest
+	input.Sources[0].ID = &id
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	if previous == s.digest {
+		t.Fatal("source ID not bound")
+	}
+	input.Sources[0].URL = "https://user:pass@example.com"
+	calls := s.calls
+	if _, err := uc.Update(context.Background(), [32]byte{}, id, key, input); err == nil || s.calls != calls {
+		t.Fatal("invalid source reached storage")
+	}
+}

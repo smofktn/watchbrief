@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendCollectionSource = `-- name: AppendCollectionSource :exec
+INSERT INTO app.information_sources(id, watch_target_id, name, url, instruction)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type AppendCollectionSourceParams struct {
+	ID            string
+	WatchTargetID string
+	Name          string
+	Url           string
+	Instruction   string
+}
+
+func (q *Queries) AppendCollectionSource(ctx context.Context, arg AppendCollectionSourceParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionSource,
+		arg.ID,
+		arg.WatchTargetID,
+		arg.Name,
+		arg.Url,
+		arg.Instruction,
+	)
+	return err
+}
+
 const appendCollectionTarget = `-- name: AppendCollectionTarget :exec
 INSERT INTO app.watch_targets(id, collection_id, name, instruction, enabled, display_order)
 SELECT $1, $2, $3, $4, true, COALESCE(MAX(display_order), -1) + 1
@@ -32,6 +56,22 @@ func (q *Queries) AppendCollectionTarget(ctx context.Context, arg AppendCollecti
 		arg.Instruction,
 	)
 	return err
+}
+
+const collectionSourceTarget = `-- name: CollectionSourceTarget :one
+SELECT id FROM app.watch_targets WHERE id = $1 AND collection_id = $2
+`
+
+type CollectionSourceTargetParams struct {
+	ID           string
+	CollectionID string
+}
+
+func (q *Queries) CollectionSourceTarget(ctx context.Context, arg CollectionSourceTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, collectionSourceTarget, arg.ID, arg.CollectionID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const collectionUpdateRequest = `-- name: CollectionUpdateRequest :one
@@ -100,6 +140,33 @@ func (q *Queries) RecordCollectionUpdate(ctx context.Context, arg RecordCollecti
 		arg.ResultVersion,
 	)
 	return err
+}
+
+const updateCollectionSource = `-- name: UpdateCollectionSource :one
+UPDATE app.information_sources SET name = $3, url = $4, instruction = $5, updated_at = clock_timestamp()
+WHERE id = $1 AND watch_target_id = $2
+RETURNING id
+`
+
+type UpdateCollectionSourceParams struct {
+	ID            string
+	WatchTargetID string
+	Name          string
+	Url           string
+	Instruction   string
+}
+
+func (q *Queries) UpdateCollectionSource(ctx context.Context, arg UpdateCollectionSourceParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionSource,
+		arg.ID,
+		arg.WatchTargetID,
+		arg.Name,
+		arg.Url,
+		arg.Instruction,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateCollectionTarget = `-- name: UpdateCollectionTarget :one

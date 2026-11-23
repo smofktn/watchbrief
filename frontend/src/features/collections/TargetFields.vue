@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
+import SourceFields from './SourceFields.vue'
 import type { TargetDraft } from './targetForm'
 defineProps<{ targets: TargetDraft[]; disabled: boolean }>()
-const emit = defineEmits<{ add: []; remove: [index: number] }>()
+const emit = defineEmits<{ add: []; remove: [index: number]; addSource: [index: number]; removeSource: [targetIndex: number, sourceIndex: number] }>()
 </script>
 <template>
   <section aria-labelledby="targets-title">
@@ -17,6 +18,8 @@ const emit = defineEmits<{ add: []; remove: [index: number] }>()
       <label :for="`target-instruction-${index}`">補足指示（任意・10,000文字以内）</label>
       <textarea :id="`target-instruction-${index}`" v-model="target.instruction" :aria-invalid="!!target.error" :aria-describedby="target.error ? `target-error-${index}` : undefined" />
       <p v-if="target.error" :id="`target-error-${index}`" role="alert">{{ target.error }}</p>
+      <SourceFields v-if="target.id !== null" :sources="target.sources" :target-index="index" :disabled="disabled" @add="emit('addSource', index)" @remove="emit('removeSource', index, $event)" />
+      <p v-else>対象を保存してから情報源を追加してください。</p>
       <Button v-if="target.id === null" type="button" label="追加を取り消す" @click="emit('remove', index)" />
     </fieldset>
     <Button type="button" label="対象を追加" :disabled="disabled" @click="emit('add')" />

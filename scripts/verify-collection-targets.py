@@ -106,7 +106,7 @@ FOR EACH ROW EXECUTE FUNCTION app.verify_target_failure();""")
     # Verify actual minimum privileges, not only GRANT text.
     for statement in ('DELETE FROM app.watch_targets WHERE false', 'UPDATE app.watch_targets SET enabled=true WHERE false',
                       'UPDATE app.watch_targets SET display_order=3 WHERE false', 'UPDATE app.watch_targets SET collection_id=id WHERE false',
-                      'UPDATE app.information_sources SET name=\'x\' WHERE false', 'UPDATE app.generation_jobs SET collection_name=\'x\' WHERE false'):
+                      'UPDATE app.information_sources SET watch_target_id=id WHERE false', 'UPDATE app.generation_jobs SET collection_name=\'x\' WHERE false'):
         sql('BEGIN; SET LOCAL ROLE watchbrief_api; DO $verify$ BEGIN BEGIN ' + statement +
             "; RAISE EXCEPTION 'Unexpectedly allowed'; EXCEPTION WHEN insufficient_privilege THEN NULL; END; END $verify$; ROLLBACK;")
     print('Target API: atomic body/add/edit, 8-way replay/race, old request replay, owner/CSRF/input/20 changes, >64KiB, rollback/retry, states/sources/history and minimum privileges: passed', flush=True)

@@ -97,7 +97,7 @@ func readCollectionUpdate(body []byte) (domain.CollectionUpdate, error) {
 		}
 		fields[name] = raw
 	}
-	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || (len(fields) != 5 && len(fields) != 6) {
+	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || (len(fields) < 5 || len(fields) > 7) {
 		return input, invalid
 	}
 	if json.Unmarshal(fields["version"], &input.Version) != nil || !domain.ValidCollectionVersion(input.Version) {
@@ -122,6 +122,23 @@ func readCollectionUpdate(body []byte) (domain.CollectionUpdate, error) {
 		delete(fields, "targets")
 	}
 
+	if rawSources, exists := fields["sources"]; exists {
+		if bytes.Equal(bytes.TrimSpace(rawSources), []byte("null")) {
+			return input, invalid
+		}
+		var rows []json.RawMessage
+		if json.Unmarshal(rawSources, &rows) != nil || len(rows) > 20 {
+			return input, invalid
+		}
+		for _, row := range rows {
+			source, err := readSourceChange(row)
+			if err != nil {
+				return input, invalid
+			}
+			input.Sources = append(input.Sources, source)
+		}
+		delete(fields, "sources")
+	}
 	raw, err := json.Marshal(fields)
 	if err != nil {
 		return input, invalid
@@ -164,4 +181,42 @@ func readTargetChange(body []byte) (domain.TargetChange, error) {
 	}
 	target.Name, target.Instruction = *name, *instruction
 	return target, nil
+}
+
+func readSourceChange(body []byte) (domain.SourceChange, error) {
+	var source domain.SourceChange
+	invalid := errors.New("invalid source change JSON")
+	d := json.NewDecoder(bytes.NewReader(body))
+	t, err := d.Token()
+	if err != nil || t != json.Delim('{') {
+		return source, invalid
+	}
+	fields := map[string]json.RawMessage{}
+	for d.More() {
+		t, err := d.Token()
+		name, ok := t.(string)
+		if _, duplicate := fields[name]; err != nil || !ok || duplicate {
+			return source, invalid
+		}
+		var raw json.RawMessage
+		if d.Decode(&raw) != nil {
+			return source, invalid
+		}
+		fields[name] = raw
+	}
+	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || len(fields) != 5 {
+		return source, invalid
+	}
+	id, exists := fields["id"]
+	if !exists || json.Unmarshal(id, &source.ID) != nil {
+		return source, invalid
+	}
+	for name, dest := range map[string]*string{"watch_target_id": &source.WatchTargetID, "name": &source.Name, "url": &source.URL, "instruction": &source.Instruction} {
+		var value *string
+		if json.Unmarshal(fields[name], &value) != nil || value == nil {
+			return source, invalid
+		}
+		*dest = *value
+	}
+	return source, nil
 }
