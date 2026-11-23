@@ -935,6 +935,6 @@ Frontendは保存済み対象ごとに情報源下書きを保持し、変更行
 
 ## Schedule一括保存への拡張
 
-停止中CollectionのSchedule追加・cron式編集を既存PATCHへ含める。省略は維持、削除は後続。本人transaction advisory lock・停止状態・全体版を検証し、本体・対象・情報源・Schedule・版1増加・要求記録を原子的に保存する。追加IDはAPIで生成し再送では再生成しない。Collection所属を検証し、collection_idの一意性を維持する。既存Job/Attempt/Reportは更新しない。版13でScheduleの必要列INSERT/UPDATEだけを追加し、旧migrationは変更しない。
+ブラウザは変更したScheduleだけを本体・対象・情報源と既存PATCHへ送り、結果不明時は同じ本文・要求番号で再試行する。APIは既存本人lock・停止状態・全体版検査のtransaction内でSchedule追加/編集と版増加・要求記録まで確定する。再送は保存済み結果を返し、追加IDを再生成しない。保存後の詳細GETと競合時の最新値比較・明示再編集も既存経路を共有する。
 
-受理cron構文と#19の予定判定に共用する意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。保存は生成を開始しない。
+[Scheduleの業務規則](domain-model.md#schedule一括保存への拡張)、[DB制約と権限](database-design.md#schedule一括保存への拡張)、[受理構文と#19との共通契約](API仕様/patch-api-collections.md#schedule追加編集)を参照する。保存処理はScheduler/Workerを起動せず、生成履歴を書き換えない。

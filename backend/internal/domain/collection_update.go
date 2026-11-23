@@ -12,9 +12,10 @@ var ErrCollectionNotStopped = errors.New("collection must be stopped")
 
 type CollectionUpdate struct {
 	NewCollection
-	Version string         `json:"version"`
-	Targets []TargetChange `json:"targets,omitempty"`
-	Sources []SourceChange `json:"sources,omitempty"`
+	Version  string          `json:"version"`
+	Targets  []TargetChange  `json:"targets,omitempty"`
+	Sources  []SourceChange  `json:"sources,omitempty"`
+	Schedule *ScheduleChange `json:"schedule,omitempty"`
 }
 
 // Decimal strings avoid loss of bigint precision in browser JSON.
@@ -64,6 +65,14 @@ func (input CollectionUpdate) Validate() error {
 		text := NewCollection{Name: source.Name, ResearchInstruction: source.Instruction, InitialLookbackMode: "ai"}
 		if text.Validate() != nil || !ValidSourceURL(source.URL) {
 			return &CollectionInputError{Fields: map[string]string{"sources": "情報源の表示名・URL・補足指示を確認してください。"}}
+		}
+	}
+	if input.Schedule != nil {
+		if input.Schedule.ID != nil && !ValidIdentifier(*input.Schedule.ID) {
+			return ErrInvalidIdentifier
+		}
+		if !ValidCron(input.Schedule.CronExpression) {
+			return &CollectionInputError{Fields: map[string]string{"schedule": "日本時間の5フィールドcron式を入力してください。"}}
 		}
 	}
 	return nil

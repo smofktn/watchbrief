@@ -120,3 +120,16 @@ func TestSourceChangeStrictJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleChangeStrictJSON(t *testing.T) {
+	base := `{"name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1"`
+	for _, value := range []string{`null`, `[]`, `{}`, `{"id":null}`, `{"cron_expression":"0 7 * * *"}`, `{"id":null,"cron_expression":null}`, `{"id":null,"cron_expression":7}`, `{"id":1,"cron_expression":"0 7 * * *"}`, `{"id":null,"id":null,"cron_expression":"0 7 * * *"}`, `{"id":null,"cron_expression":"0 7 * * *","extra":1}`, `{"id":null,"cron_expression":"\ud800"}`} {
+		if _, err := readCollectionUpdate([]byte(base + `,"schedule":` + value + `}`)); err == nil {
+			t.Fatal("accepted invalid schedule shape")
+		}
+	}
+	input, err := readCollectionUpdate([]byte(base + `,"schedule":{"id":null,"cron_expression":" 0 7 * * * "},"targets":[],"sources":[]}`))
+	if err != nil || input.Schedule == nil || input.Schedule.ID != nil || input.Schedule.CronExpression != " 0 7 * * * " {
+		t.Fatal("schedule not preserved")
+	}
+}

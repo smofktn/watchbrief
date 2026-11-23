@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendCollectionSchedule = `-- name: AppendCollectionSchedule :exec
+INSERT INTO app.collection_schedules(id, collection_id, cron_expression) VALUES ($1, $2, $3)
+`
+
+type AppendCollectionScheduleParams struct {
+	ID             string
+	CollectionID   string
+	CronExpression string
+}
+
+func (q *Queries) AppendCollectionSchedule(ctx context.Context, arg AppendCollectionScheduleParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionSchedule, arg.ID, arg.CollectionID, arg.CronExpression)
+	return err
+}
+
 const appendCollectionSource = `-- name: AppendCollectionSource :exec
 INSERT INTO app.information_sources(id, watch_target_id, name, url, instruction)
 VALUES ($1, $2, $3, $4, $5)
@@ -56,6 +71,17 @@ func (q *Queries) AppendCollectionTarget(ctx context.Context, arg AppendCollecti
 		arg.Instruction,
 	)
 	return err
+}
+
+const collectionScheduleID = `-- name: CollectionScheduleID :one
+SELECT id FROM app.collection_schedules WHERE collection_id = $1
+`
+
+func (q *Queries) CollectionScheduleID(ctx context.Context, collectionID string) (string, error) {
+	row := q.db.QueryRow(ctx, collectionScheduleID, collectionID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const collectionSourceTarget = `-- name: CollectionSourceTarget :one
@@ -140,6 +166,24 @@ func (q *Queries) RecordCollectionUpdate(ctx context.Context, arg RecordCollecti
 		arg.ResultVersion,
 	)
 	return err
+}
+
+const updateCollectionSchedule = `-- name: UpdateCollectionSchedule :one
+UPDATE app.collection_schedules SET cron_expression = $3, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2 RETURNING id
+`
+
+type UpdateCollectionScheduleParams struct {
+	ID             string
+	CollectionID   string
+	CronExpression string
+}
+
+func (q *Queries) UpdateCollectionSchedule(ctx context.Context, arg UpdateCollectionScheduleParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionSchedule, arg.ID, arg.CollectionID, arg.CronExpression)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateCollectionSource = `-- name: UpdateCollectionSource :one

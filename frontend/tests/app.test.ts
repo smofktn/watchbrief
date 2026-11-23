@@ -935,3 +935,103 @@ test('source change count spans all targets and does not cap registration count'
   expect(JSON.parse(attempts[0].body as string).sources).toHaveLength(20)
   expect(JSON.parse(attempts[0].body as string).targets).toBeUndefined()
 })
+
+describe('Schedule integrated Collection editing', () => {
+  test.each([null, { id: otherId, cron_expression: 'legacy-unparsed-expression' }])('omits unchanged unset or legacy Schedule', async schedule => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, schedule })
+    })
+    await click('編集')
+    await app.get('#collection-name').setValue('本体だけ変更')
+    await click('保存')
+    expect(attempts).toHaveLength(1)
+    expect(JSON.parse(attempts[0].body as string).schedule).toBeUndefined()
+  })
+  test.each([null, { id: otherId, cron_expression: '0 7 * * *' }])('adds/edits Schedule with exact uncertain retry and input locking', async schedule => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, schedule })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 25 * * *')
+    await click('保存')
+    expect(attempts).toHaveLength(0)
+    expect(document.activeElement?.id).toBe('schedule-cron')
+    await app.get('#schedule-cron').setValue(' 0 7,19 * * * ')
+    await app.get('#collection-name').setValue('本体も同時に')
+    await click('保存')
+    expect(JSON.parse(attempts[0].body as string)).toMatchObject({ name: '本体も同時に', schedule: { id: schedule?.id ?? null, cron_expression: ' 0 7,19 * * * ' } })
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') !== undefined)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+  })
+  test('rejects empty existing Schedule and allows correction after definite 400', async () => {
+    let calls = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { ++calls; return response({ error: { code: 'invalid_request' } }, 400) }
+      return response({ ...collection, schedule: { id: otherId, cron_expression: '0 7 * * *' } })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('')
+    await click('保存')
+    expect(calls).toBe(0)
+    expect(app.get('#schedule-error').text()).toContain('空にできません')
+    await app.get('#schedule-cron').setValue('0 8 * * *')
+    await click('保存')
+    expect(calls).toBe(1)
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') === undefined)).toBe(true)
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 8 * * *')
+  })
+  test('compares new server Schedule while preserving the whole draft and restarts explicitly', async () => {
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { return response({ error: { code: 'update_conflict' } }, 409) }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', schedule: reads === 1 ? null : { id: otherId, cron_expression: '0 9 * * *' } })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 8 * * *')
+    await app.get('#collection-name').setValue('保持する本体')
+    await click('対象を追加')
+    await app.get('#target-name-0').setValue('保持する新規対象')
+    await click('保存')
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('0 9 * * *')
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 8 * * *')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('保持する本体')
+    expect(app.find('#target-name-0').exists()).toBe(true)
+    await click('最新値で編集し直す')
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 9 * * *')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe(collection.name)
+    expect(app.find('#target-name-0').exists()).toBe(false)
+    expect(app.text()).toContain('登録済みの式を空欄にして削除することはできません')
+  })
+  test.each(['route', 'cancel', 'logout', 'expire'])('clears Schedule on %s and discards late save', async action => {
+    const pending = deferred<Response>()
+    let patches = 0
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/logout') { return response(null, 204) }
+      if (options.method === 'PATCH') { ++patches; return pending.promise }
+      return response(collection)
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 11 * * *')
+    await app.get('form').trigger('submit')
+    await flushPromises()
+    if (action === 'route') { await router.push('/me') }
+    else if (action !== 'expire') { await click(action === 'cancel' ? '詳細へ戻る' : 'ログアウト') }
+    pending.resolve(action === 'expire' ? unauthenticated() : response({ id, version: '2' }))
+    await flushPromises()
+    expect(patches).toBe(1)
+    expect(app.find('#schedule-cron').exists()).toBe(false)
+    expect(app.text()).not.toContain('0 11 * * *')
+  })
+})

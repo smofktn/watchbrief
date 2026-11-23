@@ -218,3 +218,13 @@ make verify-collection-update
 停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](../docs/API仕様/patch-api-collections.md)を参照。
 
 検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
+
+## Scheduleの一括保存（Issue #82）
+
+停止中CollectionのSchedule追加・cron式編集を既存PATCHに含める。省略維持、最大1件・削除なし。全体版/本人lock/旧digest互換を維持し、版と要求記録まで原子的保存する。goose版13でScheduleのINSERT(id,collection_id,cron_expression)とUPDATE(cron_expression,updated_at)だけを付与する。既存migration1〜12・runtime・依存lockは変更せず、通常起動・配備へmigrationを混ぜない。
+
+`make verify-collection-schedules` は既存sources検証にSchedule API/Chromiumを加える。前提はGo/Node、`make backend-deps frontend-install`（npm ci --ignore-scripts）、既存sqlc/goose、Docker/Compose、Chromium。必要な場合だけBROWSER_LIBRARY_PATHを指定する。使い捨てproject/volume・空きport・架空データを使い、通常DBは停止/初期化/移行せず、最後に通常DBの稼働状態不変と専用環境の除去を確認する。
+
+新規構築、9→10→11→12→13の既存設定/要求保持・再適用、追加/編集/未設定/再表示、8並列再送/全体競合、旧source digest/再送、所属404/CSRF、構文不正、全rollback/復旧、履歴不変・禁止列権限を検証する。Chromiumでは正常系、構文エラー/空欄・フォーカス・390px幅、実DB停止、保存後のfetch境界での応答破棄と正確な再送、競合/比較/明示再編集、認証失効/logout消去を検証する。fetch境界注入は実通信断やDB commit応答喪失とは区別する。実施結果と未確認項目はIssue/PRへ記録する。
+
+cronの限定構文は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)を正とし、Go/TSの小さなvalidatorを共通fixtureで検証する。予定計算ライブラリの追加や#19の実装は行わない。作成済Job/Reportは変更しない。
