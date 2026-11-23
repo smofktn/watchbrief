@@ -423,3 +423,9 @@ APIに追加する権限は、本体のname・research_instruction・initial_loo
 commit済み要求の再送では新規IDを生成せず元の成功結果を返し、画面が詳細を再取得する。digestは任意targetsのomitemptyで旧形式を維持し、新形式だけに対象変更を含める。空配列は省略と同じ対象変更なしとして扱う。旧形式の成功要求も再送可能とし、元の作成要求記録は変更しない。対象保存・要求記録挿入・版上限等の失敗は全rollbackとする。
 
 版11はテーブル・カラム・既存データを変更しない権限追加である。既存migrationは変更せず、通常起動への自動migrationを追加しない。通常DBと#21配備版への適用は含めず、別途固定版と明示操作で扱う。Downは追加権限を剥がすが、通常の切り戻しはアプリ版を戻し、旧版成功要求の再試行互換を保つ。[更新API](API仕様/patch-api-collections.md#watchtarget追加編集への拡張issue-78)と[隔離検証](../backend/README.md#本体とwatchtargetの一括保存issue-78)を参照する。
+
+## 情報源追加・編集（Issue #18）
+
+既存information_sourcesの列/外部キー/索引を使用し、追加migrationでAPIへ必要列INSERT(id,watch_target_id,name,url,instruction)とUPDATE(name,url,instruction,updated_at)だけを付与する。DELETE・親ID/ID変更の権限は付与しない。旧migration・既存データ・過去要求は変更しない。所属検証はCollection→対象→情報源の条件を持つSQLで行う。本体・対象・情報源・全体版・更新要求は既存本人単位lockの同一transactionで確定する。通常起動/配備へのmigration自動適用は追加しない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。

@@ -926,3 +926,9 @@ HTTPのPATCH境界は既存のCSRF・Cookie・厳密JSONを扱い、UpdateCollec
 既存UpdateCollectionユースケースが対象の入力条件と要求digestを検証する。PostgreSQL adapterは既存の本人単位transaction advisory lockを共有し、所有者・保存済み要求・停止状態・全体版を確認する。本体の条件付き更新後に対象の追加・編集を行い、全体の版増加・更新要求記録と同じtransactionで確定する。保存済み要求の再送では対象を再作成しない。将来の更新経路も全体版と同じ排他に整合させる。
 
 新規対象のONは将来の生成対象を表し、Collection有効化や生成開始の操作ではない。既存対象の状態・順序・情報源と、生成履歴・input_snapshotを維持する。契約は[更新APIの拡張](API仕様/patch-api-collections.md#watchtarget追加編集への拡張issue-78)、保存権限は[DB設計](database-design.md#watchtarget追加編集issue-78)、画面は[対象編集](画面仕様/コレクション本体の編集.md#watchtarget追加編集への拡張issue-78)を参照する。
+
+## 情報源追加・編集（Issue #18）
+
+Frontendは保存済み対象ごとに情報源下書きを保持し、変更行を独立sources配列にして既存PATCHへ送る。本体/対象/情報源で保存状態・競合比較・破棄を共有する。Backendは入力/所属を検証し、既存本人単位lockとtransactionの中で情報源も保存する。全体版と要求記録を共有し、旧本体/対象digestを維持する。外部取得・DNS照会は行わない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。

@@ -162,3 +162,11 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 停止中Collection配下のWatchTargetの対象名・任意の補足指示の追加と編集を扱う。[合意範囲と未決定事項](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)を参照する。画面・API・入力範囲と子Issue #78に合意し、本体と対象の一括保存を実装する。子PRは既存方針どおり#18をbaseとする。
 
 合意したWatchTarget一括保存は子Issue [#78](https://github.com/smofktn/watchbrief/issues/78)で実装・検証・セルフレビューする。親#18の設計commitから子#78を作り、PRのbaseは#18とする。
+
+## 情報源追加・編集（Issue #18）
+
+代理回答で停止中Collectionの情報源追加/編集・本体/対象との一括保存を採用した。親#18に具体契約を記録してcommit後、子Issue/ブランチで実装・隔離DB/画面検証・セルフレビューを進める。子PRのbaseは#18。今回だけで親全体の完了とはしない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+子Issueは[#80](https://github.com/smofktn/watchbrief/issues/80)。親設計commitから子ブランチ#80を作り、子PRのbaseを#18とする。
