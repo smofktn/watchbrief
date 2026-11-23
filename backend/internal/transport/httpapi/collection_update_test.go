@@ -53,7 +53,7 @@ func TestCollectionUpdateBoundary(t *testing.T) {
 		{"null version", strings.Replace(body, `"version":"1"`, `"version":null`, 1), key, origin, cookie, nil, 400, 0},
 		{"unpaired", strings.Replace(body, "架空", `\ud800`, 1), key, origin, cookie, nil, 400, 0},
 		{"extra", body + "{}", key, origin, cookie, nil, 400, 0},
-		{"too big", strings.Repeat(" ", 65537), key, origin, cookie, nil, 400, 0},
+		{"too big", strings.Repeat(" ", 1048577), key, origin, cookie, nil, 400, 0},
 		{"invalid utf8", string([]byte{0xff}), key, origin, cookie, nil, 400, 0},
 		{"expired", body, key, origin, cookie, domain.ErrUnauthenticated, 401, 1},
 		{"hidden", body, key, origin, cookie, domain.ErrResourceNotFound, 404, 1},
@@ -88,5 +88,23 @@ func TestCollectionUpdateBoundary(t *testing.T) {
 				t.Fatal("update contract changed")
 			}
 		})
+	}
+}
+
+func TestTargetChangeStrictJSON(t *testing.T) {
+	base := `{"name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1"`
+	for _, value := range []string{`null`, `{}`, `[null]`, `[{"id":null,"name":"x"}]`, `[{"id":null,"name":"x","instruction":null}]`, `[{"id":null,"name":"x","instruction":"","enabled":true}]`, `[{"id":null,"name":"x","name":"y","instruction":""}]`, `[{"name":"x","instruction":"","extra":null}]`, `[{"id":1,"name":"x","instruction":""}]`, `[{"id":null,"name":"\ud800","instruction":""}]`} {
+		if _, err := readCollectionUpdate([]byte(base + `,"targets":` + value + `}`)); err == nil {
+			t.Fatal("accepted invalid target shape")
+		}
+	}
+	good := `[{"id":null,"name":"架空対象","instruction":""}]`
+	input, err := readCollectionUpdate([]byte(base + `,"targets":` + good + `}`))
+	if err != nil || len(input.Targets) != 1 || input.Targets[0].ID != nil || input.Targets[0].Name != "架空対象" {
+		t.Fatal("valid target not preserved")
+	}
+	large := strings.Repeat(" ", 70000) + base + `,"targets":` + good + `}`
+	if _, err := readCollectionUpdate([]byte(large)); err != nil {
+		t.Fatal("valid JSON above old limit rejected by parser")
 	}
 }

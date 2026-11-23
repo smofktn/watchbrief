@@ -206,3 +206,9 @@ make verify-collection-update
 ブラウザでは実DB停止時の入力保持、実保存後にfetch境界で応答だけを捨てた再試行、別クライアントの先行保存と最新値確認/編集し直し、詳細/一覧/再読み込み、ログアウト消去を扱う。応答破棄は実ネットワーク断・DB commit応答喪失と区別する。Vitestは不正応答・401・遅い応答・二重送信・画面離脱を応答注入で確認する。
 
 通信と入力条件は[更新API](../docs/API仕様/patch-api-collections.md)、操作は[編集画面](../docs/画面仕様/コレクション本体の編集.md)、保存構造は[DB設計](../docs/database-design.md#collection本体の編集issue-74)。実行結果と未確認範囲は#74と子PRへ記録し、過去#72の結果を今回の動作確認に数えない。
+
+## 本体とWatchTargetの一括保存（Issue #78）
+
+停止中Collectionの本体と、対象名・任意の補足指示の追加・編集を既存PATCHで原子的に保存する。新規対象はONで末尾へ追加し、既存の状態・順序・情報源は維持する。通常起動前にgoose版11を既存の `make db-migrate` で明示適用する必要がある。この変更や `make dev` が通常DBや#21配備版へ自動適用することはない。既存migrationは変更しない。
+
+追加検証入口はルートの `make verify-collection-targets`。`make backend-deps frontend-install tools-install` で依存と既定版ツールを準備する。専用Compose project・空きポート・架空User/設定/履歴だけで新規構築、旧データの保持、APIの並列更新/再送、所有者非開示、巻き戻しと再試行、最小権限、実Chromiumを検証し、専用volumeと秘密ファイルを除去する。ChromiumはPATH・既存Playwright cache・CHROMIUM_BINから検出する。不足共有ライブラリは必要ならBROWSER_LIBRARY_PATHへ別途指定する。通常DBを起動・停止・初期化しない。検証結果はIssue/PRへ記録する。

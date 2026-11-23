@@ -5,11 +5,14 @@ import { errorCode, jsonBody, request } from '../../api'
 import { useSession } from '../auth/session'
 import { isCollection, isCollectionVersion, type Collection } from './data'
 import { validateCollectionForm } from './form'
+import { targetChanges, targetDrafts, validateTargets, type TargetDraft } from './targetForm'
 
 export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: () => void) => {
   const session = useSession()
   const route = useRoute()
   const form = reactive({ name: '', instruction: '', mode: 'ai', days: '' })
+  const targets = reactive<TargetDraft[]>([])
+  let baseline = original
   const fields = reactive({ name: '', instruction: '', days: '' })
   const busy = ref(false)
   const uncertain = ref(false)
@@ -27,6 +30,8 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     Object.assign(form, { name: value.name, instruction: value.research_instruction, mode: value.initial_lookback_mode, days: value.initial_lookback_days === null ? '' : String(value.initial_lookback_days) })
     Object.assign(fields, { name: '', instruction: '', days: '' })
     version = value.version
+    baseline = value
+    targets.splice(0, targets.length, ...targetDrafts(value))
   }
   assign(original)
   const clear = () => {
@@ -35,6 +40,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     window.clearTimeout(timer)
     Object.assign(form, { name: '', instruction: '', mode: 'ai', days: '' })
     Object.assign(fields, { name: '', instruction: '', days: '' })
+    targets.splice(0)
     version = ''; key = ''; payload = ''
     latest.value = null
     message.value = ''
@@ -49,9 +55,16 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     }
     const retrying = uncertain.value
     if (!checking && !retrying) {
-      if (!validateCollectionForm(form, fields)) {
+      const bodyValid = validateCollectionForm(form, fields)
+      const targetsValid = validateTargets(targets)
+      if (!bodyValid || !targetsValid) {
         await nextTick()
-        document.getElementById(fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days')?.focus()
+        document.getElementById(!bodyValid ? (fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days') : `target-name-${targets.findIndex(target => target.error)}`)?.focus()
+        return
+      }
+      const changes = targetChanges(targets, baseline)
+      if (changes.length > 20) {
+        message.value = '1回に保存できる対象の追加・変更は20行までです。変更を減らして保存してください。'
         return
       }
       try {
@@ -60,7 +73,12 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
         message.value = '保存を準備できません。詳細へ戻って再度お試しください。'
         return
       }
-      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version })
+      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version, ...(changes.length ? { targets: changes } : {}) })
+      if (new TextEncoder().encode(payload).length > 1048576) {
+        key = ''; payload = ''
+        message.value = '保存する内容が大きすぎます。入力を減らしてください。'
+        return
+      }
     }
     const requestID = ++generation
     const epoch = session.epoch.value
@@ -109,7 +127,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
           uncertain.value = false
           key = ''; payload = ''
         }
-        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容を確認してください。名前は1〜200文字、調査方針は10,000文字以内、日数は1〜365日です。' : '送信元を確認できません。詳細へ戻って確認してください。'
+        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容を確認してください。名前は1〜200文字、調査方針・対象の補足指示は10,000文字以内、対象名は1〜200文字、日数は1〜365日です。' : '送信元を確認できません。詳細へ戻って確認してください。'
       } else {
         message.value = '保存結果を確認できません。同じ内容で再試行してください。'
       }
@@ -138,5 +156,21 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
   watch(() => route.path, clear, { flush: 'sync' })
   watch([session.state, session.epoch], clear, { flush: 'sync' })
   onScopeDispose(clear)
-  return { form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
+  const addTarget = async () => {
+    if (busy.value || uncertain.value || conflict.value || terminal.value) { return }
+    if (targetChanges(targets, baseline).length >= 20) {
+      message.value = '1回に保存できる対象の追加・変更は20行までです。先に保存してください。'
+      return
+    }
+    targets.push({ id: null, name: '', instruction: '', error: '' })
+    await nextTick()
+    document.getElementById(`target-name-${targets.length - 1}`)?.focus()
+  }
+  const removeTarget = async (index: number) => {
+    if (busy.value || uncertain.value || conflict.value || terminal.value || targets[index]?.id !== null) { return }
+    targets.splice(index, 1)
+    await nextTick()
+    document.getElementById('targets-title')?.focus()
+  }
+  return { targets, addTarget, removeTarget, form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
 }

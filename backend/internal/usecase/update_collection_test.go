@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/smofktn/watchbrief/backend/internal/domain"
@@ -79,5 +81,32 @@ func TestUpdateAuthenticatesValidatesAndBindsRequest(t *testing.T) {
 	}
 	if _, err := (UpdateCollection{}).Update(context.Background(), [32]byte{}, id, key, input); !errors.Is(err, domain.ErrCollectionStore) {
 		t.Fatal("nil store")
+	}
+}
+
+func TestUpdateTargetValidationAndLegacyDigest(t *testing.T) {
+	id := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	const key = "00112233-4455-4677-8899-aabbccddeeff"
+	s := &updateStoreStub{}
+	uc := UpdateCollection{Store: s}
+	input := domain.CollectionUpdate{NewCollection: domain.NewCollection{Name: "架空", InitialLookbackMode: "ai"}, Version: "1"}
+	uc.Update(context.Background(), [32]byte{}, id, key, input)
+	old := sha256.Sum256([]byte(`{"id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1"}`))
+	if s.digest != old {
+		t.Fatal("legacy digest changed")
+	}
+	input.Targets = []domain.TargetChange{{Name: "対象", Instruction: "補足"}}
+	if _, err := uc.Update(context.Background(), [32]byte{}, id, key, input); err != nil || s.digest == old {
+		t.Fatal("target not bound")
+	}
+	for _, rows := range [][]domain.TargetChange{
+		{{Name: "　"}}, {{Name: strings.Repeat("a", 201)}}, {{Name: "x", Instruction: strings.Repeat("a", 10001)}}, {{Name: "a\x00"}},
+		{{ID: &id, Name: "x"}, {ID: &id, Name: "y"}}, make([]domain.TargetChange, 21),
+	} {
+		input.Targets = rows
+		calls := s.calls
+		if _, err := uc.Update(context.Background(), [32]byte{}, id, key, input); err == nil || s.calls != calls {
+			t.Fatal("invalid targets reached storage")
+		}
 	}
 }

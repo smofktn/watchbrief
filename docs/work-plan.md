@@ -159,6 +159,6 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 
 ## Issue #18の次の確認範囲（範囲合意済み）
 
-停止中Collection配下のWatchTargetの対象名・任意の補足指示の追加と編集を扱う。[合意範囲と未決定事項](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)を参照する。具体的な画面・API・子Issue範囲は相談中で、未合意の機能実装は進めない。子PRは既存方針どおり#18をbaseとする。
+停止中Collection配下のWatchTargetの対象名・任意の補足指示の追加と編集を扱う。[合意範囲と未決定事項](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)を参照する。画面・API・入力範囲と子Issue #78に合意し、本体と対象の一括保存を実装する。子PRは既存方針どおり#18をbaseとする。
 
 合意したWatchTarget一括保存は子Issue [#78](https://github.com/smofktn/watchbrief/issues/78)で実装・検証・セルフレビューする。親#18の設計commitから子#78を作り、PRのbaseは#18とする。

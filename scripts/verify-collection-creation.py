@@ -97,7 +97,7 @@ FOR EACH ROW EXECUTE FUNCTION app.verify_creation_failure();""")
         ('watchbrief_api', 'DELETE FROM app.collections WHERE false'),
         ('watchbrief_api', 'UPDATE app.collection_creation_requests SET input_digest=NULL WHERE false'),
         ('watchbrief_api', 'DELETE FROM app.collection_creation_requests WHERE false'),
-        ('watchbrief_api', "INSERT INTO app.watch_targets(name) VALUES('fictional')"),
+        ('watchbrief_api', "INSERT INTO app.watch_targets(name,created_at) VALUES('fictional',now())"),
         ('watchbrief_user_creator', 'SELECT * FROM app.collection_creation_requests LIMIT 0'),
     ]:
         # A nested block accepts only an actual permission denial, never a different SQL error.

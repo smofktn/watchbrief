@@ -698,6 +698,8 @@ describe('Collection body editing', () => {
     })
     await click('編集')
     await app.get('#collection-name').setValue('遅い応答の入力')
+    await click('対象を追加')
+    await app.get('#target-name-0').setValue('遅い対象の下書き')
     await app.get('form').trigger('submit')
     await app.get('form').trigger('submit')
     expect(writes).toBe(1)
@@ -709,6 +711,8 @@ describe('Collection body editing', () => {
     await flushPromises()
     expect(app.find('#edit-title').exists()).toBe(false)
     expect(app.text()).not.toContain('遅い応答の入力')
+    expect(app.find('#target-name-0').exists()).toBe(false)
+    expect(app.text()).not.toContain('遅い対象の下書き')
     expect(localStorage.length + sessionStorage.length).toBe(0)
   })
   test('enabled collection has no edit action', async () => {
@@ -738,4 +742,71 @@ test('editing timeout aborts only its request and preserves the exact retry; inc
   expect(attempts[1].headers).toEqual(attempts[0].headers)
   expect(app.find('#edit-title').exists()).toBe(true)
   expect(app.text()).toContain('保存結果を確認できません')
+})
+
+describe('Collection and target atomic editing', () => {
+  const existing = { id: otherId, name: '既存対象', instruction: '既存指示', enabled: false, display_order: 9, sources: [] }
+  test('validates targets, omits untouched rows, cancels only new drafts and submits one combined request', async () => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({ id, version: '2' }) }
+      return response({ ...collection, targets: [existing] })
+    })
+    await click('編集')
+    await click('対象を追加')
+    await click('保存')
+    expect(attempts).toHaveLength(0)
+    expect(document.activeElement?.id).toBe('target-name-1')
+    await click('追加を取り消す')
+    expect(app.findAll('button').filter(b => b.text() === '追加を取り消す')).toHaveLength(0)
+    await app.get('#collection-name').setValue('本体も変更')
+    await app.get('#target-instruction-0').setValue('変更指示')
+    await click('対象を追加')
+    await app.get('#target-name-1').setValue('新規対象')
+    await click('保存')
+    expect(attempts).toHaveLength(1)
+    expect(JSON.parse(attempts[0].body as string)).toMatchObject({ name: '本体も変更', version: '1', targets: [{ id: otherId, name: '既存対象', instruction: '変更指示' }, { id: null, name: '新規対象', instruction: '' }] })
+    expect(app.find('#edit-title').exists()).toBe(false)
+  })
+  test('target retry retains exact payload and key; all fields freeze; conflict compares and resets whole draft', async () => {
+    const attempts: RequestInit[] = []
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') {
+        attempts.push(options)
+        if (attempts.length === 1) { throw new Error('lost response') }
+        return response({ error: { code: 'update_conflict' } }, 409)
+      }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', targets: [{ ...existing, name: reads === 1 ? existing.name : '他タブの対象' }] })
+    })
+    await click('編集')
+    await click('対象を追加')
+    await app.get('#target-name-1').setValue('保持する下書き')
+    await click('保存')
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') !== undefined)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('他タブの対象')
+    expect((app.get('#target-name-1').element as HTMLInputElement).value).toBe('保持する下書き')
+    await click('最新値で編集し直す')
+    expect(app.find('#target-name-1').exists()).toBe(false)
+    expect((app.get('#target-name-0').element as HTMLInputElement).value).toBe('他タブの対象')
+  })
+  test('twenty changes is a per-request limit, and unchanged rows are not sent', async () => {
+    const targets = Array.from({ length: 21 }, (_, i) => ({ ...existing, id: `000000000000000000000000${String(i).padStart(2, '0')}` }))
+    const { app, fetch } = await start(`/collections/${id}`, path => path === '/api/me' ? me() : response({ ...collection, targets }))
+    await click('編集')
+    for (let i = 0; i < 21; i++) { await app.get(`#target-name-${i}`).setValue(`変更${i}`) }
+    await click('保存')
+    expect(app.text()).toContain('変更を減らして保存')
+    expect(fetch.mock.calls.filter(([, opts]) => opts.method === 'PATCH')).toHaveLength(0)
+    await app.get('#target-name-20').setValue(existing.name)
+    await click('保存')
+    const sent = fetch.mock.calls.filter(([, opts]) => opts.method === 'PATCH')
+    expect(JSON.parse(sent[0][1].body as string).targets).toHaveLength(20)
+  })
 })
