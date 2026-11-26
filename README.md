@@ -24,7 +24,7 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。停止中Collectionの対象・情報源・Schedule追加/編集を同じ画面で一括保存できます。有効化・削除・並べ替え等は後続範囲で、Report本文はテキスト表示です。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。停止中Collectionの対象・情報源・Schedule追加/編集を同じ画面で一括保存できます。有効化・削除・並べ替え等は後続範囲で、Report本文は安全なMarkdown表示に対応します。
 
 最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
@@ -118,3 +118,9 @@ Collection本体の編集は版10の明示migration後、停止中の詳細か�
 停止中Collectionの編集で、日本時間のraw cron式を追加・編集し、本体・対象・情報源とまとめて保存します。例は `0 7 * * *`（毎日7時）。未設定の空欄は追加せず、登録済みの式を空にして削除することはできません。保存で生成は開始しません。[画面/API契約](docs/画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照してください。
 
 通常DBへの自動適用はありません。版13はScheduleの必要列権限だけを追加します。専用Compose project/架空データの検証入口は `make verify-collection-schedules`。[検証手順](backend/README.md#scheduleの一括保存issue-82)を参照してください。
+
+### 保存済みReportのMarkdown表示（Issue #84）
+
+所有するReportの詳細で保存済み本文を見出し・段落・強調・リスト・コード・安全な出典リンクとして表示します。生HTMLや画像は文字として表示し、整形不可時も安全なテキストへ戻します。API/保存本文は変更せず、閲覧時に生成・外部取得を行いません。[画面契約](docs/画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照してください。
+
+検証入口は `make verify-report-markdown`。通常DBを操作しない使い捨て環境でChromiumのネットワーク監視も行います。[検証と依存の手順](frontend/README.md#保存済みreportのmarkdown表示issue-84)を参照してください。

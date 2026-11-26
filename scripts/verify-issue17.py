@@ -29,12 +29,13 @@ def free_port():
 
 
 def main():
+    markdown = sys.argv[1:] == ['--report-markdown']
     schedules = sys.argv[1:] == ['--collection-schedules']
     sources = schedules or sys.argv[1:] == ['--collection-sources']
     targets = sources or sys.argv[1:] == ['--collection-targets']
     updating = targets or sys.argv[1:] == ['--collection-update']
     creation = updating or sys.argv[1:] == ['--collection-creation']
-    if sys.argv[1:] and not creation:
+    if sys.argv[1:] and not (creation or markdown):
         raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='watchbrief-issue17-') as directory:
@@ -167,6 +168,22 @@ def main():
                     script(seed, '--login-id', login)
                     script(seed, '--login-id', login)
             ids = json.loads(sql("SELECT json_object_agg(u.login_id,json_build_object('collection',c.id,'report',r.id)) FROM app.users u JOIN app.generation_jobs j ON j.user_id=u.id JOIN app.collections c ON c.id=j.collection_id JOIN app.generation_attempts a ON a.generation_job_id=j.id JOIN app.reports r ON r.generation_attempt_id=a.id"))
+            markdown_history = None
+            if markdown:
+                # Separate namespace; existing v3 successful history remains byte-for-byte intact.
+                historical_tables = ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')
+                existing_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in historical_tables}
+                for login in logins:
+                    script('seed-markdown-reports.py', '--login-id', login)
+                    script('seed-markdown-reports.py', '--login-id', login)
+                for table, content in existing_history.items():
+                    for row in json.loads(content):
+                        assert json.loads(sql("SELECT to_jsonb(t)::text FROM app."+table+" t WHERE id='"+row['id']+"'")) == row
+                rows = runpy.run_path(str(stage / 'scripts/seed-markdown-reports.py'))['fixture_rows']
+                for login in logins:
+                    owner = sql("SELECT id FROM app.users WHERE login_id='"+login+"'")
+                    ids[login]['markdown_report'] = rows(owner)[0]['report']
+                markdown_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in historical_tables}
             api_port, web_port = free_port(), free_port()
             origin = f'http://127.0.0.1:{web_port}'
             environment.update(API_ADDR=f'127.0.0.1:{api_port}', APP_ORIGIN=origin,
@@ -238,6 +255,15 @@ def main():
                     runpy.run_path(str(stage / 'scripts/verify-collection-sources.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
                 if schedules:
                     runpy.run_path(str(stage / 'scripts/verify-collection-schedules.py'))['verify'](request, sql, token, other_token, ids[logins[0]]['collection'])
+                if markdown:
+                    for index, login_id in enumerate(logins):
+                        mid = ids[login_id]['markdown_report']
+                        status,_,body = request('/api/reports/'+mid, token if index==0 else other_token)
+                        assert status==200
+                        assert json.loads(body)['body_markdown']==json.loads(sql("SELECT to_json(body_markdown)::text FROM app.reports WHERE id='"+mid+"'"))
+                    other = request('/api/reports/'+ids[logins[1]]['markdown_report'],token)
+                    missing = request('/api/reports/00000000000000000000000000',token)
+                    assert other[0]==missing[0]==404 and other[2]==missing[2]
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
@@ -273,9 +299,12 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
+                if markdown:
+                    assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in markdown_history.items())
+                    print('Markdown viewing preserved all saved history and body/API values; old seed history unchanged: passed', flush=True)
                 output.flush()
                 log_text = logs.read_text()
                 for line in log_text.splitlines():

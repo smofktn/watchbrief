@@ -182,3 +182,5 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 利用者がこの既存ペインだけへ実装・検証・セルフレビュー/修正・親#18向けPR提出までを明示依頼。上ペインの設計代理判断に基づき、所有Report深いURL→ログイン復帰→見出し/段落/強調/リスト/コード/出典リンク→再読込→logoutを通す。本格一覧/home・生成/外部取得・Collection有効化は別作業。#18全体は未完了。
 
 具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+この表示作業は子Issue [#84](https://github.com/smofktn/watchbrief/issues/84)。親の設計commit起点の子ブランチで実装し、PR base=#18とする。

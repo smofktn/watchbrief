@@ -69,13 +69,13 @@ def fixture_rows(owner):
     return ids, rows
 
 
-def seed(login):
+def seed(login, rows_factory=fixture_rows):
     if not re.fullmatch(r'[a-z0-9_-]{1,64}', login):
         raise SystemExit('Invalid fictional login ID.')
     owner = query("SELECT id FROM app.users WHERE login_id=:'fixture_login';", login)
     if not re.fullmatch(r'[0-7][0-9A-HJKMNP-TV-Z]{25}', owner):
         raise SystemExit('Create the fictional User with make user-create first.')
-    ids, rows = fixture_rows(owner)
+    ids, rows = rows_factory(owner)
     sql = ['BEGIN;', 'SET LOCAL ROLE watchbrief_migrator;']
     checks = []
     for table, row in rows:

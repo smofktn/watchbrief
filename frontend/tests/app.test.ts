@@ -154,11 +154,11 @@ describe('resources, retry, and rendering', () => {
     expect(router.currentRoute.value.path).toBe(target)
     expect(app.get('article').text()).toContain(text)
   })
-  test('report HTML is displayed only as pre text', async () => {
+  test('report HTML remains literal within sanitized Markdown', async () => {
     const { app } = await start(`/reports/${id}`, (url) => url === '/api/me' ? me() : response(report))
-    expect(app.get('pre').text()).toBe(report.body_markdown)
-    expect(app.find('pre script').exists()).toBe(false)
-    expect(app.find('pre img').exists()).toBe(false)
+    expect(app.get('.report-body').text()).toBe(report.body_markdown)
+    expect(app.find('.report-body script').exists()).toBe(false)
+    expect(app.find('.report-body img').exists()).toBe(false)
   })
   test('collection renders nested data and optional settings as plain text', async () => {
     const rich = { ...collection, enabled: true, research_instruction: '<b>plain</b>', initial_lookback_mode: 'days', initial_lookback_days: 7, schedule: { id, cron_expression: '0 9 * * *' }, targets: [
@@ -206,7 +206,7 @@ describe('resources, retry, and rendering', () => {
   test('wrong detail ID in 200 is rejected', async () => {
     const { app } = await start(`/reports/${id}`, (url) => url === '/api/me' ? me() : response({ ...report, id: otherId }))
     expect(app.text()).toContain('処理に失敗しました')
-    expect(app.find('pre').exists()).toBe(false)
+    expect(app.find('.report-body').exists()).toBe(false)
   })
 })
 
@@ -322,15 +322,15 @@ describe('logout and stale response isolation', () => {
       if (url === '/api/me') { return ++identities === 1 ? me() : identity.promise }
       return response({ ...report, id: url.endsWith(otherId) ? otherId : id })
     })
-    expect(app.get('pre').text()).toBe(report.body_markdown)
+    expect(app.get('.report-body').text()).toBe(report.body_markdown)
     await router.push(`/reports/${otherId}`)
     await flushPromises()
-    expect(app.find('pre').exists()).toBe(false)
+    expect(app.find('.report-body').exists()).toBe(false)
     expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', `/api/reports/${id}`, '/api/me'])
     identity.resolve(me())
     await flushPromises()
     expect(fetch.mock.calls.at(-1)![0]).toBe(`/api/reports/${otherId}`)
-    expect(app.find('pre').exists()).toBe(true)
+    expect(app.find('.report-body').exists()).toBe(true)
   })
   test('external navigation crossing an internal authentication redirect invalidates late identity', async () => {
     const identity = deferred<Response>()
@@ -1033,5 +1033,44 @@ describe('Schedule integrated Collection editing', () => {
     expect(patches).toBe(1)
     expect(app.find('#schedule-cron').exists()).toBe(false)
     expect(app.text()).not.toContain('0 11 * * *')
+  })
+})
+
+describe('derived Report Markdown follows resource and authentication clearing', () => {
+  const richReport = { ...report, body_markdown: '# 非公開本文\n\n**強調** [出典](https://example.com)' }
+  test('logout start clears generated HTML even while logout fails, and it does not reappear', async () => {
+    const logout = deferred<Response>()
+    const { app } = await start(`/reports/${id}`, (path) => path === '/api/me' ? me() : path === '/api/logout' ? logout.promise : response(richReport))
+    expect(app.get('.report-body h1').text()).toBe('非公開本文')
+    expect(app.get('.report-body strong').text()).toBe('強調')
+    await click('ログアウト')
+    expect(app.find('.report-body').exists()).toBe(false)
+    logout.resolve(response({}, 500))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(app.text()).not.toContain('非公開本文')
+  })
+  test('identity recheck clears old HTML; a 401 from Report read erases it and safely redirects', async () => {
+    let reads = 0
+    const delayed = deferred<Response>()
+    const { app, router } = await start(`/reports/${id}`, path => path === '/api/me' ? me() : ++reads === 1 ? response(richReport) : delayed.promise)
+    expect(app.find('.report-body a').exists()).toBe(true)
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    delayed.resolve(unauthenticated())
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to='+encodeURIComponent(`/reports/${id}`))
+    expect(app.text()).not.toContain('非公開本文')
+  })
+  test.each(['route', 'logout'])('late Report response after %s cannot create derived HTML', async action => {
+    const delayed = deferred<Response>()
+    const { app, router } = await start(`/reports/${id}`, path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : delayed.promise)
+    if (action === 'route') { await router.push('/me') } else { await click('ログアウト') }
+    delayed.resolve(response(richReport))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(app.text()).not.toContain('非公開本文')
   })
 })

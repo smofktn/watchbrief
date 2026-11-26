@@ -423,7 +423,7 @@ AIが出力するMarkdown断片では、通常の文章、段落、太字、斜�
 
 #17の委任に基づく実装判断として、`/reports` の最小リンク一覧と `/reports/{ULID}` の読み取り専用詳細を用意する。管理コマンドが架空の成功Job・Attempt・Reportと構造化データを一括保存し、ログイン後に本人の保存済み本文だけを読む。Collectionを削除した後も履歴の所有者はJobから判定する。
 
-本文は保存済みMarkdownをそのままテキスト表示する。HTML挿入・Markdown変換、日付別・Collection別の本格一覧は #18で扱う。生成、Scheduler・Worker、AI・外部取得はここでは行わない。具体契約は[API](API仕様/get-api-reports.md)と[画面](画面仕様/保存済みReportの取得.md)を参照する。
+Issue #57では本文をテキスト表示した。現在の表示方法は[保存済みReportの安全なMarkdown表示](#保存済みreportの安全なmarkdown表示)に従う。日付別・Collection別の本格一覧は #18の後続で扱う。生成、Scheduler・Worker、AI・外部取得はここでは行わない。具体契約は[API](API仕様/get-api-reports.md)と[画面](画面仕様/保存済みReportの取得.md)を参照する。
 
 ## Collection本体の新規作成（Issue #18の最初の範囲・合意済み）
 
