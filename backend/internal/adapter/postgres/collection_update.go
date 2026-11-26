@@ -117,6 +117,33 @@ func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key st
 			}
 		}
 	}
+	if input.Schedule != nil {
+		schedule := input.Schedule
+		if schedule.ID == nil {
+			_, err := q.CollectionScheduleID(ctx, id)
+			if err == nil {
+				return empty, domain.ErrUpdateConflict
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrCollectionStore
+			}
+			scheduleID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionSchedule(ctx, generated.AppendCollectionScheduleParams{ID: scheduleID, CollectionID: id, CronExpression: schedule.CronExpression}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			_, err := q.UpdateCollectionSchedule(ctx, generated.UpdateCollectionScheduleParams{ID: *schedule.ID, CollectionID: id, CronExpression: schedule.CronExpression})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
+	}
 	if q.RecordCollectionUpdate(ctx, generated.RecordCollectionUpdateParams{UserID: owner, RequestKey: key, CollectionID: pgtype.Text{String: id, Valid: true}, InputDigest: digest[:], ResultVersion: version}) != nil {
 		return empty, domain.ErrCollectionStore
 	}

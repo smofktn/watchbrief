@@ -37,3 +37,13 @@ VALUES ($1, $2, $3, $4, $5);
 UPDATE app.information_sources SET name = $3, url = $4, instruction = $5, updated_at = clock_timestamp()
 WHERE id = $1 AND watch_target_id = $2
 RETURNING id;
+
+-- name: CollectionScheduleID :one
+SELECT id FROM app.collection_schedules WHERE collection_id = $1;
+
+-- name: AppendCollectionSchedule :exec
+INSERT INTO app.collection_schedules(id, collection_id, cron_expression) VALUES ($1, $2, $3);
+
+-- name: UpdateCollectionSchedule :one
+UPDATE app.collection_schedules SET cron_expression = $3, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2 RETURNING id;

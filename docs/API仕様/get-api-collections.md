@@ -64,3 +64,5 @@ Scheduleなしは `schedule: null`、対象・情報源なしはそれぞれ空�
 この取得経路は設定4テーブルのSELECTを使う。#18で追加する本体INSERTと要求記録の権限は[作成API](post-api-collections.md)を参照する。詳細は所有者で絞ったCollectionを起点に、外部キーで所属する配下設定だけを組み立てる。ID差し替え・配下情報の他者混入・空配列・未認証と内部障害の区別を試験する。構造化エラーログは固定項目とし、Cookie・DBエラー・設定全文を含めない。
 
 本体編集で使う `version` は詳細JSONだけに含む正規十進文字列。版の照合と[更新API](patch-api-collections.md)を組み合わせる。一覧の応答は変更しない。版10の明示migrationが必要。
+
+Scheduleの追加・cron式編集後も本GETで現在値を取得する。保存契約は[更新API](patch-api-collections.md#schedule追加編集)、操作は[編集画面](../画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照する。次回予定時刻は返さない（#34）。

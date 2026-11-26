@@ -432,6 +432,8 @@ commit済み要求の再送では新規IDを生成せず元の成功結果を返
 
 ## Schedule一括保存への拡張
 
-停止中CollectionのSchedule追加・cron式編集を既存PATCHへ含める。省略は維持、削除は後続。本人transaction advisory lock・停止状態・全体版を検証し、本体・対象・情報源・Schedule・版1増加・要求記録を原子的に保存する。追加IDはAPIで生成し再送では再生成しない。Collection所属を検証し、collection_idの一意性を維持する。既存Job/Attempt/Reportは更新しない。版13でScheduleの必要列INSERT/UPDATEだけを追加し、旧migrationは変更しない。
+既存collection_schedulesとcollection_idのUNIQUE・Collectionへの外部キーを使い、1 Collection最大1件を維持する。追加時はAPIがULIDを生成、編集はidとcollection_idの両方を条件にする。本人transaction advisory lockとCollection全体版・要求記録を共有し、本体/対象/情報源/Schedule/版1増加/要求記録を同一transactionで確定する。旧digestはScheduleのomitemptyで保持し、再送は保存済要求の結果を返す。
 
-受理cron構文と#19の予定判定に共用する意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。保存は生成を開始しない。
+goose版13はwatchbrief_apiへINSERT(id,collection_id,cron_expression)とUPDATE(cron_expression,updated_at)だけを付与する。SELECTは既存権限を使う。DELETE・id/親/作成日時変更・生成履歴更新・所有者権限は付与しない。旧migration1〜12、テーブル・カラム・既存データは変更しない。通常起動/配備への自動適用は追加しない。
+
+受理構文と所属404/追加競合・省略の通信契約は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。検証は[使い捨て環境の手順](../backend/README.md#scheduleの一括保存issue-82)で行い、通常DBへの適用は別途扱う。

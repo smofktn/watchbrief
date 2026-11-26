@@ -145,6 +145,6 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 
 ## Schedule一括保存への拡張
 
-停止中CollectionのSchedule追加・cron式編集を既存PATCHへ含める。省略は維持、削除は後続。本人transaction advisory lock・停止状態・全体版を検証し、本体・対象・情報源・Schedule・版1増加・要求記録を原子的に保存する。追加IDはAPIで生成し再送では再生成しない。Collection所属を検証し、collection_idの一意性を維持する。既存Job/Attempt/Reportは更新しない。版13でScheduleの必要列INSERT/UPDATEだけを追加し、旧migrationは変更しない。
+停止中CollectionのScheduleを追加・cron式編集できる。最大1件、省略は維持。未設定の空欄はScheduleなしで本体等を保存し、既存式の空欄は削除の意味にしない。本人所有Collectionへの所属と停止状態・全体版を検証し、設定一式は部分保存しない。Scheduleへの先行保存と本体等への先行保存は互いに全体競合として扱う。
 
-受理cron構文と#19の予定判定に共用する意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。保存は生成を開始しない。
+日本時間固定・祝日除外なし。保存では生成を開始せず、作成済Jobのscheduled_at/input_snapshot・Reportを変更しない。削除・有効化は後続、次回予定表示は#34、予定計算とJob生成は#19。cronの受理構文と日/曜日の意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)、利用者向け仕様は[正本](product-definition.md#停止中collectionのschedule追加編集代理判断)を参照する。

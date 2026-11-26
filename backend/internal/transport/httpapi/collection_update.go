@@ -97,7 +97,7 @@ func readCollectionUpdate(body []byte) (domain.CollectionUpdate, error) {
 		}
 		fields[name] = raw
 	}
-	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || (len(fields) < 5 || len(fields) > 7) {
+	if t, err = d.Token(); err != nil || t != json.Delim('}') || d.Decode(new(any)) != io.EOF || (len(fields) < 5 || len(fields) > 8) {
 		return input, invalid
 	}
 	if json.Unmarshal(fields["version"], &input.Version) != nil || !domain.ValidCollectionVersion(input.Version) {
@@ -138,6 +138,14 @@ func readCollectionUpdate(body []byte) (domain.CollectionUpdate, error) {
 			input.Sources = append(input.Sources, source)
 		}
 		delete(fields, "sources")
+	}
+	if raw, exists := fields["schedule"]; exists {
+		change, err := readScheduleChange(raw)
+		if err != nil {
+			return input, invalid
+		}
+		input.Schedule = &change
+		delete(fields, "schedule")
 	}
 	raw, err := json.Marshal(fields)
 	if err != nil {
@@ -219,4 +227,40 @@ func readSourceChange(body []byte) (domain.SourceChange, error) {
 		*dest = *value
 	}
 	return source, nil
+}
+
+func readScheduleChange(body []byte) (domain.ScheduleChange, error) {
+	var schedule domain.ScheduleChange
+	invalid := errors.New("invalid schedule change JSON")
+	d := json.NewDecoder(bytes.NewReader(body))
+	token, err := d.Token()
+	if err != nil || token != json.Delim('{') {
+		return schedule, invalid
+	}
+	fields := map[string]json.RawMessage{}
+	for d.More() {
+		token, err := d.Token()
+		name, ok := token.(string)
+		if _, duplicate := fields[name]; err != nil || !ok || duplicate {
+			return schedule, invalid
+		}
+		var raw json.RawMessage
+		if d.Decode(&raw) != nil {
+			return schedule, invalid
+		}
+		fields[name] = raw
+	}
+	if token, err = d.Token(); err != nil || token != json.Delim('}') || d.Decode(new(any)) != io.EOF || len(fields) != 2 {
+		return schedule, invalid
+	}
+	id, exists := fields["id"]
+	if !exists || json.Unmarshal(id, &schedule.ID) != nil {
+		return schedule, invalid
+	}
+	var expression *string
+	if json.Unmarshal(fields["cron_expression"], &expression) != nil || expression == nil {
+		return schedule, invalid
+	}
+	schedule.CronExpression = *expression
+	return schedule, nil
 }

@@ -237,12 +237,16 @@ try {
     const { verifySources } = await import('./verify-collection-sources-browser.mjs')
     issued.push(await verifySources({ checkpoint: value => { phase = 'collection-sources-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
   }
+  if (fixture.verify_schedules) {
+    const { verifySchedules } = await import('./verify-collection-schedules-browser.mjs')
+    issued.push(await verifySchedules({ checkpoint: value => { phase = 'collection-schedules-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
   console.log('Browser: protected Report return, safe fallback, own settings/plain text Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-collection-(?:update|targets|sources)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-collection-(?:update|targets|sources|schedules)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)

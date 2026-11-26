@@ -115,3 +115,9 @@ make coverage
 停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](../docs/API仕様/patch-api-collections.md)を参照。
 
 検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
+
+## Scheduleの一括編集（Issue #82）
+
+停止中Collectionの既存編集モードに `ScheduleFields.vue` を表示し、日本時間のraw cronを本体・対象・情報源と一括保存する。入力例・構文エラー・入力保持を表示し、未設定なら空欄で保存できる。既存式の空欄削除は許可しない。`scheduleForm.ts` とGoのvalidatorは共通fixtureで受理構文を検証する。限定構文・#19との共通契約は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)、操作は[編集画面](../docs/画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照。
+
+既存の版・競合比較・明示再編集・結果不明時の本文/番号保持・認証消去・遅延応答破棄を拡張する。単体は `make frontend-test`、実DB/Chromiumはルートの `make verify-collection-schedules`。API側の版13権限が必要だが、通常起動にmigrationを追加しない。次回予定表示・生成処理は含めない。

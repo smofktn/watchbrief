@@ -170,3 +170,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
 
 子Issueは[#80](https://github.com/smofktn/watchbrief/issues/80)。親設計commitから子ブランチ#80を作り、子PRのbaseを#18とする。
+
+## 停止中CollectionのSchedule追加・編集（Issue #82）
+
+利用者から設計回答を委任された上ペインの代理判断で採用。既存編集に日本時間raw cronを追加し、本体・対象・情報源と一括保存する。詳細→追加→保存→再読込→式編集→保存/再表示を最小正常系とし、全体版・旧要求互換・原子性・入力保持・認証消去を維持する。契約は[更新API](API仕様/patch-api-collections.md#schedule追加編集)、操作は[編集画面](画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)。
+
+削除・有効化等は#18の後続、次回予定表示は#34、生成/実行は#19、AI/外部取得は#20。#18全体の完了を意味しない。通常DB/本番/EC2への版13適用と配備は別途扱う。

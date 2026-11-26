@@ -2,20 +2,22 @@
 import type { DeepReadonly } from 'vue'
 import Button from 'primevue/button'
 import CollectionFields from './CollectionFields.vue'
+import ScheduleFields from './ScheduleFields.vue'
 import TargetFields from './TargetFields.vue'
 import type { Collection } from './data'
 import { useCollectionEditing } from './useCollectionEditing'
 const props = defineProps<{ collection: DeepReadonly<Collection> }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
-const { targets, addTarget, removeTarget, addSource, removeSource, form, fields, busy, uncertain, conflict, terminal, latest, message, submit, checkLatest, restart } = useCollectionEditing(props.collection, () => emit('saved'))
+const { hasSchedule, targets, addTarget, removeTarget, addSource, removeSource, form, fields, busy, uncertain, conflict, terminal, latest, message, submit, checkLatest, restart } = useCollectionEditing(props.collection, () => emit('saved'))
 </script>
 <template>
   <section aria-labelledby="edit-title">
     <h3 id="edit-title" tabindex="-1">コレクションの編集</h3>
-    <p>名前・調査方針・初回の更新確認期間と、ウォッチ対象・情報源の追加・変更をまとめて保存します。</p>
+    <p>名前・調査方針・初回の更新確認期間と、ウォッチ対象・情報源・生成スケジュールの追加・変更をまとめて保存します。</p>
     <form novalidate :aria-busy="busy" @submit.prevent="submit">
       <CollectionFields :form="form" :fields="fields" :disabled="busy || uncertain || conflict || terminal" />
       <TargetFields :targets="targets" :disabled="busy || uncertain || conflict || terminal" @add="addTarget" @remove="removeTarget" @add-source="addSource" @remove-source="removeSource" />
+      <ScheduleFields :form="form" :fields="fields" :disabled="busy || uncertain || conflict || terminal" :existing="hasSchedule" />
       <p v-if="message" role="alert">{{ message }}</p>
       <p v-if="busy" role="status">結果を確認しています。</p>
       <Button type="submit" :label="uncertain ? '同じ内容で再試行' : '保存'" :disabled="busy || conflict || terminal" />
@@ -25,12 +27,13 @@ const { targets, addTarget, removeTarget, addSource, removeSource, form, fields,
         <p>名前：{{ latest.name }}</p>
         <p>調査方針：{{ latest.research_instruction || '未設定' }}</p>
         <p>初回の更新確認：{{ latest.initial_lookback_mode === 'ai' ? 'AIに任せる' : `${latest.initial_lookback_days}日前から` }}</p>
+        <p>生成予定（日本時間）：{{ latest.schedule?.cron_expression ?? '未設定' }}</p>
         <section aria-label="最新のウォッチ対象">
           <p v-if="latest.targets.length === 0">ウォッチ対象はありません。</p>
           <div v-for="target in latest.targets" :key="target.id"><p>{{ target.name }}（{{ target.enabled ? 'ON' : 'OFF' }}）</p><p>{{ target.instruction || '補足指示なし' }}</p><ul><li v-for="source in target.sources" :key="source.id">{{ source.name }}：{{ source.url }}<p>{{ source.instruction }}</p></li></ul></div>
         </section>
         <p v-if="latest.enabled">現在はONのため、この画面からは保存できません。</p>
-        <p v-else>下書きと見比べてください。「最新値で編集し直す」で本体・対象・情報源の入力欄を最新値に置き換え、未保存の新規対象・情報源も破棄します。</p>
+        <p v-else>下書きと見比べてください。「最新値で編集し直す」で本体・対象・情報源・Scheduleの入力欄を最新値に置き換え、未保存の新規対象・情報源・Scheduleも破棄します。</p>
         <Button label="最新値で編集し直す" :disabled="busy || latest.enabled || terminal" @click="restart" />
       </section>
       <Button label="詳細へ戻る" @click="emit('cancel')" />

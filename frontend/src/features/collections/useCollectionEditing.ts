@@ -5,16 +5,18 @@ import { errorCode, jsonBody, request } from '../../api'
 import { useSession } from '../auth/session'
 import { isCollection, isCollectionVersion, type Collection } from './data'
 import { validateCollectionForm } from './form'
+import { validCron } from './scheduleForm'
 import { newSource, sourceChanges, validateSources } from './sourceForm'
 import { targetChanges, targetDrafts, validateTargets, type TargetDraft } from './targetForm'
 
 export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: () => void) => {
   const session = useSession()
   const route = useRoute()
-  const form = reactive({ name: '', instruction: '', mode: 'ai', days: '' })
+  const form = reactive({ name: '', instruction: '', mode: 'ai', days: '', cron: '' })
   const targets = reactive<TargetDraft[]>([])
+  const hasSchedule = ref(false)
   let baseline = original
-  const fields = reactive({ name: '', instruction: '', days: '' })
+  const fields = reactive({ name: '', instruction: '', days: '', cron: '' })
   const busy = ref(false)
   const uncertain = ref(false)
   const conflict = ref(false)
@@ -28,10 +30,11 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
   let controller: AbortController | undefined
   let timer: number | undefined
   const assign = (value: DeepReadonly<Collection>) => {
-    Object.assign(form, { name: value.name, instruction: value.research_instruction, mode: value.initial_lookback_mode, days: value.initial_lookback_days === null ? '' : String(value.initial_lookback_days) })
-    Object.assign(fields, { name: '', instruction: '', days: '' })
+    Object.assign(form, { name: value.name, instruction: value.research_instruction, mode: value.initial_lookback_mode, days: value.initial_lookback_days === null ? '' : String(value.initial_lookback_days), cron: value.schedule?.cron_expression ?? '' })
+    Object.assign(fields, { name: '', instruction: '', days: '', cron: '' })
     version = value.version
     baseline = value
+    hasSchedule.value = value.schedule !== null
     targets.splice(0, targets.length, ...targetDrafts(value))
   }
   assign(original)
@@ -39,9 +42,10 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     ++generation
     controller?.abort()
     window.clearTimeout(timer)
-    Object.assign(form, { name: '', instruction: '', mode: 'ai', days: '' })
-    Object.assign(fields, { name: '', instruction: '', days: '' })
+    Object.assign(form, { name: '', instruction: '', mode: 'ai', days: '', cron: '' })
+    Object.assign(fields, { name: '', instruction: '', days: '', cron: '' })
     targets.splice(0)
+    hasSchedule.value = false
     version = ''; key = ''; payload = ''
     latest.value = null
     message.value = ''
@@ -57,14 +61,17 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     const retrying = uncertain.value
     if (!checking && !retrying) {
       const bodyValid = validateCollectionForm(form, fields)
+      const scheduleChanged = form.cron !== (baseline.schedule?.cron_expression ?? '')
+      fields.cron = scheduleChanged && !validCron(form.cron) ? form.cron === '' && hasSchedule.value ? '登録済みの式は空にできません。日本時間の5フィールドcron式を入力してください。' : '日本時間の5フィールドcron式を入力してください。' : ''
+      const scheduleValid = !fields.cron
       const targetsValid = validateTargets(targets)
       const allSources = targets.flatMap(target => target.sources)
       // Legacy stored values are preserved unless the user edits that source.
       for (const source of allSources) { source.error = ''; source.errorField = '' }
       const sourcesValid = validateSources(allSources.filter(source => sourceChanges([source], baseline).length > 0))
-      if (!bodyValid || !targetsValid || !sourcesValid) {
+      if (!bodyValid || !targetsValid || !sourcesValid || !scheduleValid) {
         await nextTick()
-        document.getElementById(!bodyValid ? (fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days') : !targetsValid ? `target-name-${targets.findIndex(target => target.error)}` : `source-${allSources.find(source => source.error)?.errorField}-${allSources.find(source => source.error)?.key}`)?.focus()
+        document.getElementById(!bodyValid ? (fields.name ? 'collection-name' : fields.instruction ? 'collection-instruction' : 'collection-days') : !targetsValid ? `target-name-${targets.findIndex(target => target.error)}` : !sourcesValid ? `source-${allSources.find(source => source.error)?.errorField}-${allSources.find(source => source.error)?.key}` : 'schedule-cron')?.focus()
         return
       }
       const changes = targetChanges(targets, baseline)
@@ -83,7 +90,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
         message.value = '保存を準備できません。詳細へ戻って再度お試しください。'
         return
       }
-      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version, ...(changes.length ? { targets: changes } : {}), ...(sources.length ? { sources } : {}) })
+      payload = JSON.stringify({ name: form.name, research_instruction: form.instruction, initial_lookback_mode: form.mode, initial_lookback_days: form.mode === 'days' ? Number(form.days) : null, version, ...(changes.length ? { targets: changes } : {}), ...(sources.length ? { sources } : {}), ...(scheduleChanged ? { schedule: { id: baseline.schedule?.id ?? null, cron_expression: form.cron } } : {}) })
       if (new TextEncoder().encode(payload).length > 1048576) {
         key = ''; payload = ''
         message.value = '保存する内容が大きすぎます。入力を減らしてください。'
@@ -137,7 +144,7 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
           uncertain.value = false
           key = ''; payload = ''
         }
-        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容と各欄の条件を確認してください。情報源URLはHTTP/HTTPSで、認証情報を含めず入力してください。' : '送信元を確認できません。詳細へ戻って確認してください。'
+        message.value = retrying ? '要求が拒否されましたが、最初の保存結果は未確認です。同じ内容で再試行するか、詳細で確認してください。' : response.status === 400 ? '入力内容と各欄の条件を確認してください。情報源URLはHTTP/HTTPSで、認証情報を含めず入力してください。日本時間の5フィールドcron式も確認してください。' : '送信元を確認できません。詳細へ戻って確認してください。'
       } else {
         message.value = '保存結果を確認できません。同じ内容で再試行してください。'
       }
@@ -201,5 +208,5 @@ export const useCollectionEditing = (original: DeepReadonly<Collection>, saved: 
     await nextTick()
     document.getElementById(`sources-title-${targetIndex}`)?.focus()
   }
-  return { targets, addSource, removeSource, addTarget, removeTarget, form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
+  return { hasSchedule, targets, addSource, removeSource, addTarget, removeTarget, form, fields, busy, uncertain, conflict, terminal, latest, message, submit: () => run(false), checkLatest: () => run(true), restart }
 }
