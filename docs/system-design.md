@@ -944,3 +944,9 @@ Frontendは保存済み対象ごとに情報源下書きを保持し、変更行
 ブラウザが取得済みbody_markdownをmarkdown-itで変換し、DOMPurifyとアプリのリンク条件で制限して局所コンポーネントへ表示する。保存/API/生成処理は変更しない。本文props由来の計算だけを持ち、既存useResourceの消去・遅延応答破棄を共有する。未対応/例外時は安全なテキスト表示に閉じる。
 
 具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+APIは認証を先に照合し、31件までのkeyset queryから最大30件と次cursorを返す。ブラウザは既存useResourceの初回取得/消去を共有し、Report側composableが続きのロック/保持/再試行/遅い応答破棄を担当する。cursorをFrontendで生成/解読せず、順序はマイクロ秒を保持して検査する。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。

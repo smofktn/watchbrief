@@ -184,3 +184,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
 
 この表示作業は子Issue [#84](https://github.com/smofktn/watchbrief/issues/84)。親の設計commit起点の子ブランチで実装し、PR base=#18とする。
+
+## 保存済み成功Report一覧の追加取得
+
+利用者の継続委任と上ペインの代理判断で、成功Report一覧の30件ずつcursor追加取得を小さな子作業とする。35件→30件→残り5件/終了→安全な詳細→一覧/再読込→logoutを先に通し、境界/精度/失敗復旧/認証を隔離検証する。子PR base=#18、担当ペインはマージ/Issue状態変更をせず監督レビューへ提出する。#18全体は未完了。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。

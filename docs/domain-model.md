@@ -154,3 +154,9 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 Reportは生成時に組立て済みの完成本文を保持する読み取り専用の結果。Markdown閲覧は表示方法だけの変更で、AI断片の許可構文・保存時検証・構造化データ・履歴を変更しない。
 
 具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+成功した保存済みReportだけを予定時刻とReport IDの降順で段階的に読む。cursorは表示境界であり所有権/スナップショットを表さない。Collection削除後もJobの所有者で履歴を認可し、追加取得で本文/予定時刻/保存履歴を変えない。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。

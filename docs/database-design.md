@@ -443,3 +443,9 @@ goose版13はwatchbrief_apiへINSERT(id,collection_id,cron_expression)とUPDATE(
 保存済みbody_markdownをそのままAPIで取得し、ブラウザだけで変換表示する。Report/Attempt/Job/構造化テーブル・本文・権限は変更せず、migrationは追加しない。
 
 具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+Report→Attempt→Jobの所有者条件を維持して31件まで取得する。続きは(j.scheduled_at,r.id)の厳密な小なり比較、順序は同tupleの降順。既存generation_jobs(user_id,scheduled_at,id)とReport/Attemptの一意索引・SELECT権限を使い、まずmigration/権限追加なしで構築する。境界時刻はDBのマイクロ秒を保持する。全ページのsnapshotや大規模全体の走査性能を保証するものではない。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。

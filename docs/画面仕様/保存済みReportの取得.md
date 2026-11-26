@@ -30,3 +30,9 @@ URLはMarkdownライブラリの検証とブラウザURL parserの両方を通�
 DOMPurify未対応・Markdown変換/sanitize例外時は固定案内とVue補間による保存本文のテキスト表示にする。未処理HTMLへfallbackしない。生成HTMLを永続化・キャッシュせず、useResourceの取得開始/認証/route/logout消去と遅延応答破棄を引き継ぐ。確認は限定rendererの単体、実Router/認証回帰、専用Compose/架空ReportとChromiumのネットワーク監視で行う。配布のlicense/NOTICEは[Frontend手順](../../frontend/README.md)と既存THIRD-PARTY-NOTICESへ反映する。
 
 一次資料：[markdown-it安全性](https://github.com/markdown-it/markdown-it/blob/15.0.3/docs/safety.md)、[v15移行](https://github.com/markdown-it/markdown-it/blob/15.0.3/docs/migration/migration_v15.md)、[DOMPurify](https://github.com/cure53/DOMPurify/tree/3.5.0)、[3.5.0 release](https://github.com/cure53/DOMPurify/releases/tag/3.5.0)。
+
+## 保存済み成功Report一覧の追加取得
+
+/reports初回は30件まで。「もっと読む」は続き取得中無効、成功時だけ末尾へ追加し、next_cursor:nullなら終了を表示する。失敗/timeout/不正200/重複/逆順/不整合payloadでは既存項目と同じcursorを保持して手動再試行する。初回の読込/エラー/0件は既存useResourceに従う。認証/route/logoutで一覧/本文/追加状態/cursorを消し、遅い応答を破棄する。cursorはURL/storageへ保存せずそのまま再送し、離脱/再読込は初期30件。マイクロ秒を保持する時刻文字列比較で順序検査し、JS Dateのミリ秒丸めに依存しない。
+
+具体契約は[取得API](../API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
