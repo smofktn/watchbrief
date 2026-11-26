@@ -60,7 +60,7 @@ Backend側でmigrationと `make seed-collections LOGIN_ID=fictional_user` を実
 
 0件・Scheduleなし・対象/情報源なし、404、取得失敗と「設定を再試行」を区別する。別Userの詳細IDを直接開いても「見つかりません。」とし、情報を表示しない。ログアウト開始時に設定を即座に消し、遅い設定応答や履歴操作で復活しないことも確認する。URL・本文をHTMLとして挿入せず、外部取得や編集操作は行わない。
 
-保存済みReportは `/reports` の最小一覧と `/reports/{ULID}` の詳細で取得する。本文はHTML挿入せずテキスト表示し、再試行・401/404・ログアウト中の消去は[画面仕様](../docs/画面仕様/保存済みReportの取得.md)に従う。
+保存済みReportは `/reports` の最小一覧と `/reports/{ULID}` の詳細で取得する。本文は限定Markdown変換/sanitize後に表示し、未対応時は安全なテキストへ戻す。再試行・401/404・ログアウト中の消去は[画面仕様](../docs/画面仕様/保存済みReportの取得.md)に従う。
 
 ## Frontendの責務とテスト（Issue #68）
 
@@ -121,3 +121,17 @@ make coverage
 停止中Collectionの既存編集モードに `ScheduleFields.vue` を表示し、日本時間のraw cronを本体・対象・情報源と一括保存する。入力例・構文エラー・入力保持を表示し、未設定なら空欄で保存できる。既存式の空欄削除は許可しない。`scheduleForm.ts` とGoのvalidatorは共通fixtureで受理構文を検証する。限定構文・#19との共通契約は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)、操作は[編集画面](../docs/画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照。
 
 既存の版・競合比較・明示再編集・結果不明時の本文/番号保持・認証消去・遅延応答破棄を拡張する。単体は `make frontend-test`、実DB/Chromiumはルートの `make verify-collection-schedules`。API側の版13権限が必要だが、通常起動にmigrationを追加しない。次回予定表示・生成処理は含めない。
+
+## 保存済みReportのMarkdown表示（Issue #84）
+
+`ReportMarkdown.vue` が保存本文だけを受け取り、`markdown.ts` の最終変換/sanitize結果だけを局所的に挿入する。未対応/例外時は固定案内とVue補間の本文テキストへ閉じる。本文props由来の計算だけを持ち、独立キャッシュやHTMLの永続保存はしない。useResourceの取得開始・route/認証変化・logout消去と遅延応答破棄をそのまま使う。許可タグ/タグ別属性・URL条件は[画面仕様](../docs/画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を正とする。
+
+markdown-it 15.0.3（MIT）とDOMPurify 3.5.0（Apache-2.0選択）をexact pinする。markdown-it v15の型・ESM/browser export同梱を確認し、@types/markdown-itは不要。固定runtime Node26.13.0・Vite8・TS6で型/ビルドを確認する。DOMPurify3.5.0のsecurity fixesを含むreleaseと公式README、安全性/移行資料を確認した。Marked18.3.0も代替だが、HTML/画像/拡張構文の制御を明示できる点でmarkdown-itを採用した代理判断。独自regexのみのsanitizeやhighlight依存は追加しない。
+
+追加のruntime依存は既存lock項目を変えず追加分だけ固定する。インストールは既存 `make frontend-install`（npm ci --ignore-scripts）を使う。`public/THIRD-PARTY-NOTICES.txt` へ追加依存/同梱helperのcopyrightとlicenseを反映し、Viteが配布dist直下へ複製することを確認する。DOMPurifyはパッケージLICENSEのApache-2.0を選択し、配布bundleのcopyrightと同梱MIT regenerator helperの表示も保持する。今回追加パッケージに別のNOTICEファイルはない。ライブラリ本体のソース変更はしない。CLI依存argparseのPSF表示も含める。依存更新時は現物license/NOTICEと監査を再確認する。
+
+`make frontend-test` はXSS/URL回避/タグ別属性/HTML文字表示/画像無要素、未対応/変換/sanitize例外、props変更と実Router/認証・遅延応答消去を確認する。実DB・Chromiumはルートの `make verify-report-markdown`。Go/Node・Docker/Compose・既存goose・Chromiumが必要で、不足ライブラリは既存BROWSER_LIBRARY_PATHを使いOSへ導入しない。専用project/空きport・架空User/別namespaceの保存Reportで、深いURLからの復帰/再読込/表示/消去、ネットワーク要求監視、本文/API/履歴不変、通常DBの稼働状態不変と専用環境除去を検証する。外部要求はCDPで送信前に拒否するガードを置き、試験の成功条件は拒否0件・外部要求の発生自体0件とする。リンク先はクリックしない。
+
+架空データを追加する手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。既存の架空UserとDB準備が必要で、別namespaceへ原子的追加する。既存v3履歴は変更せず、再投入時の差異を拒否する。seedは生成成功の実証ではない。通常DBへの実行は今回の作業では行わず、使い捨てrunner内だけで検証する。
+
+実施結果・監査結果・未確認のブラウザ/配備等はIssue/PRへ記録する。API/DB/schema/生成処理は不変、migration不要。本格一覧/home・Collection有効化・#19/#20/#21は対象外。

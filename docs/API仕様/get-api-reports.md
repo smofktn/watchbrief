@@ -23,3 +23,7 @@ HTTP層で同名Cookieの重複・不正トークンを拒否し、ユースケ�
 成功・失敗とも `Cache-Control: no-store`。エラーは[共通JSON](README.md)を使う。DB処理は10秒で中断する。ログの `report_read_failed` と固定のoperation/stage/result/versionのみで障害を記録し、本文、設定、トークン、ハッシュ、内部DB原因を出さない。GETは更新を行わずCookieを更新しない。既存のCookie検証・セッション照合を再利用する。
 
 確認観点は、本人の一覧/詳細、空配列、他者混入なし、同一404、Collection削除後の所有者認可、不正ID、Cookie・DB失敗の分類、ログ秘密情報の除外、保存済み本文の一致とする。UIは[保存済みReportの取得](../画面仕様/保存済みReportの取得.md)を参照する。
+
+## Markdown表示との境界
+
+APIはbody_markdownをHTMLへ変換せず、保存済みの同じ文字列を返す。閲覧によるDB本文・履歴の更新、構造化データからの再組立ては行わない。ブラウザの[安全なMarkdown表示](../画面仕様/保存済みReportの取得.md#安全なmarkdown表示)だけを追加する。所有者404・認証・応答型・no-storeは維持する。

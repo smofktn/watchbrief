@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
 import { RouterLink, useRoute } from 'vue-router'
+import ReportMarkdown from './ReportMarkdown.vue'
 import { useReports } from './useReports'
 const route = useRoute()
 const { state, message, data, load } = useReports()
@@ -24,7 +25,7 @@ const { state, message, data, load } = useReports()
       <h3>{{ data.selected.collection_name }}</h3>
       <p>確認期間：{{ data.selected.updates_started_at }} 〜 {{ data.selected.updates_ended_at }}</p>
       <p>生成完了：{{ data.selected.generated_at }}</p>
-      <pre class="report-body">{{ data.selected.body_markdown }}</pre>
+      <ReportMarkdown :markdown="data.selected.body_markdown" />
     </article>
   </section>
 </template>

@@ -228,3 +228,9 @@ make verify-collection-update
 新規構築、9→10→11→12→13の既存設定/要求保持・再適用、追加/編集/未設定/再表示、8並列再送/全体競合、旧source digest/再送、所属404/CSRF、構文不正、全rollback/復旧、履歴不変・禁止列権限を検証する。Chromiumでは正常系、構文エラー/空欄・フォーカス・390px幅、実DB停止、保存後のfetch境界での応答破棄と正確な再送、競合/比較/明示再編集、認証失効/logout消去を検証する。fetch境界注入は実通信断やDB commit応答喪失とは区別する。実施結果と未確認項目はIssue/PRへ記録する。
 
 cronの限定構文は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)を正とし、Go/TSの小さなvalidatorを共通fixtureで検証する。予定計算ライブラリの追加や#19の実装は行わない。作成済Job/Reportは変更しない。
+
+## 安全なMarkdown表示の隔離検証（Issue #84）
+
+`make verify-report-markdown` は既存の使い捨てCompose runnerで、架空User/保存済みReportと実Chromiumを検証する。`seed-markdown-reports.py` は別namespaceの新しい架空履歴を追加し、旧履歴を上書きしない。既存seedのSQL/権限は共有し、再投入時に不一致なら全体を失敗させる。手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。本作業では通常DBへは実行しない。
+
+取得API・DB・本文の変更やmigrationはない。閲覧前後の履歴全体、APIのbody_markdownとDB本文一致、所有者404を検証する。画面・依存/licenseと前提は[Frontend](../frontend/README.md#保存済みreportのmarkdown表示issue-84)を参照。通常DBの稼働状態不変と使い捨てproject/volume/private状態の除去もrunnerが確認する。

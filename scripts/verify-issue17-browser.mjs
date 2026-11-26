@@ -20,6 +20,8 @@ let profile
 let timeout
 let phase = 'startup'
 const issued = []
+const networkRequests = []
+const externalRequests = []
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 // Only the detached process group created by this runner is signalled.
 const waitForBrowserExit = async (exited, milliseconds) => {
@@ -103,6 +105,12 @@ try {
         if (message.error) { callbacks.reject(new Error('CDP command failed')) } else { callbacks.resolve(message.result) }
       } else if (message.method === 'Page.loadEventFired') {
         loadCount++
+      } else if (fixture.verify_markdown && message.method === 'Network.requestWillBeSent') {
+        networkRequests.push(message.params.request.url)
+      } else if (fixture.verify_markdown && message.method === 'Fetch.requestPaused') {
+        const external = new URL(message.params.request.url).origin !== origin
+        if (external) { externalRequests.push(message.params.request.url) }
+        void send(external ? 'Fetch.failRequest' : 'Fetch.continueRequest', { requestId: message.params.requestId, ...(external ? { errorReason: 'BlockedByClient' } : {}) }, message.sessionId).catch(failBrowser)
       } else if (message.method === 'Runtime.exceptionThrown') {
         runtimeErrors.push(true)
       }
@@ -149,6 +157,7 @@ try {
   await call('Page.enable')
   await call('Runtime.enable')
   await call('Network.enable')
+  if (fixture.verify_markdown) { await call('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }) }
   phase = 'protected-return'
   await navigate('/reports/' + fixture.ids.report)
   await waitFor("document.querySelector('#password') !== null")
@@ -241,12 +250,16 @@ try {
     const { verifySchedules } = await import('./verify-collection-schedules-browser.mjs')
     issued.push(await verifySchedules({ checkpoint: value => { phase = 'collection-schedules-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
   }
+  if (fixture.verify_markdown) {
+    const { verifyMarkdown } = await import('./verify-report-markdown-browser.mjs')
+    issued.push(await verifyMarkdown({ checkpoint: value => { phase = 'report-markdown-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, token, networkRequests, externalRequests }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
-  console.log('Browser: protected Report return, safe fallback, own settings/plain text Report, real DB outage and retry for login/me/settings/reports/logout: passed')
+  console.log('Browser: protected Report return, safe fallback, own settings/safe Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-collection-(?:update|targets|sources|schedules)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)
