@@ -938,3 +938,9 @@ Frontendは保存済み対象ごとに情報源下書きを保持し、変更行
 ブラウザは変更したScheduleだけを本体・対象・情報源と既存PATCHへ送り、結果不明時は同じ本文・要求番号で再試行する。APIは既存本人lock・停止状態・全体版検査のtransaction内でSchedule追加/編集と版増加・要求記録まで確定する。再送は保存済み結果を返し、追加IDを再生成しない。保存後の詳細GETと競合時の最新値比較・明示再編集も既存経路を共有する。
 
 [Scheduleの業務規則](domain-model.md#schedule一括保存への拡張)、[DB制約と権限](database-design.md#schedule一括保存への拡張)、[受理構文と#19との共通契約](API仕様/patch-api-collections.md#schedule追加編集)を参照する。保存処理はScheduler/Workerを起動せず、生成履歴を書き換えない。
+
+## 保存済みReportの安全なMarkdown表示
+
+ブラウザが取得済みbody_markdownをmarkdown-itで変換し、DOMPurifyとアプリのリンク条件で制限して局所コンポーネントへ表示する。保存/API/生成処理は変更しない。本文props由来の計算だけを持ち、既存useResourceの消去・遅延応答破棄を共有する。未対応/例外時は安全なテキスト表示に閉じる。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。

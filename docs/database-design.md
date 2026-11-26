@@ -437,3 +437,9 @@ commit済み要求の再送では新規IDを生成せず元の成功結果を返
 goose版13はwatchbrief_apiへINSERT(id,collection_id,cron_expression)とUPDATE(cron_expression,updated_at)だけを付与する。SELECTは既存権限を使う。DELETE・id/親/作成日時変更・生成履歴更新・所有者権限は付与しない。旧migration1〜12、テーブル・カラム・既存データは変更しない。通常起動/配備への自動適用は追加しない。
 
 受理構文と所属404/追加競合・省略の通信契約は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。検証は[使い捨て環境の手順](../backend/README.md#scheduleの一括保存issue-82)で行い、通常DBへの適用は別途扱う。
+
+## 保存済みReportの安全なMarkdown表示
+
+保存済みbody_markdownをそのままAPIで取得し、ブラウザだけで変換表示する。Report/Attempt/Job/構造化テーブル・本文・権限は変更せず、migrationは追加しない。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。

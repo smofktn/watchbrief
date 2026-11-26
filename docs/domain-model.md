@@ -148,3 +148,9 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 停止中CollectionのScheduleを追加・cron式編集できる。最大1件、省略は維持。未設定の空欄はScheduleなしで本体等を保存し、既存式の空欄は削除の意味にしない。本人所有Collectionへの所属と停止状態・全体版を検証し、設定一式は部分保存しない。Scheduleへの先行保存と本体等への先行保存は互いに全体競合として扱う。
 
 日本時間固定・祝日除外なし。保存では生成を開始せず、作成済Jobのscheduled_at/input_snapshot・Reportを変更しない。削除・有効化は後続、次回予定表示は#34、予定計算とJob生成は#19。cronの受理構文と日/曜日の意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)、利用者向け仕様は[正本](product-definition.md#停止中collectionのschedule追加編集代理判断)を参照する。
+
+## 保存済みReportの安全なMarkdown表示
+
+Reportは生成時に組立て済みの完成本文を保持する読み取り専用の結果。Markdown閲覧は表示方法だけの変更で、AI断片の許可構文・保存時検証・構造化データ・履歴を変更しない。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。

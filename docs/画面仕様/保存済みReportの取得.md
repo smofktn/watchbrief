@@ -16,3 +16,17 @@ Issue #57の委任に基づく最小読み取り専用画面。`/reports` に本
 本文はVueのテキスト補間を使い、折返し可能なpreで表示する。HTML風本文も文字として表示し、v-html、HTML挿入、Markdownレンダラは使わない。出典URLは本文中のテキストとし、外部取得を行わない。
 
 ログアウト開始、画面移動、再取得開始で保持中のReport一覧/本文を消去する。ログアウト失敗中も表示し直さず、古い世代の遅延応答や履歴操作で復活させない。API契約は[保存済みReport取得](../API仕様/get-api-reports.md)、共通認証導線は[保護URLとログイン復帰](保護URLとログイン復帰.md)を参照する。
+
+## 安全なMarkdown表示
+
+保存済みbody_markdownの表示だけを拡張する。AI断片の許可構文・生成時検証と区別する。局所コンポーネントが本文propsから変換/sanitizeした結果だけを挿入し、呼出側が任意HTMLを渡す入口を作らない。sanitize後の文字列追記・DOM加工をしない。
+
+markdown-it 15.0.3（MIT）とブラウザDOMPurify 3.5.0（Apache-2.0を選択）を固定採用する代理判断。markdown-itの型/ESMは同梱、@types/markdown-itは追加しない。Node26.13/Vite8/TS6の実互換は型検査/ビルドで確認する。Markedも候補だがHTML/画像/構文の制御を明示できる点を優先した。新しいhighlight/外部資源依存は追加しない。
+
+html:false・linkify:false・typographer:false。許可タグはh1〜h6,p,strong,em,ul,ol,li,pre,code,a,br,hr。表/引用等の拡張は追加しない。inline/fenced/indented codeはテキストとして表示し、言語class/highlightなし。HTMLは文字として表示し、画像はalt文字だけにする。許可属性はaのhref/rel/referrerpolicyとolのstartだけ。id/name/style/イベント/data/aria/target/ping/src/srcsetや埋込・画像・SVG/MathML等の実要素は作らない。DOMPurifyの限定allowlistとリンク検証を併用する。
+
+URLはMarkdownライブラリの検証とブラウザURL parserの両方を通し、絶対http/https・ホストあり・username/passwordなしとする。制御文字/空白/バックスラッシュ、相対/プロトコル相対/fragment-only、他schemeはクリック可能にしない。HTMLエンティティ/Markdownエスケープを解釈したURLも再検査する。拒否時は内容を文字として残す。情報源入力の2,048文字上限は転用しない。リンクはtargetなしの同一タブ、rel="noopener noreferrer"・referrerpolicy="no-referrer"。修飾キーによるブラウザ標準操作は妨げず、自動fetch/prefetch/preloadは行わない。クリック先の安全性や到達性・#20のSSRF対策を保証するものではない。
+
+DOMPurify未対応・Markdown変換/sanitize例外時は固定案内とVue補間による保存本文のテキスト表示にする。未処理HTMLへfallbackしない。生成HTMLを永続化・キャッシュせず、useResourceの取得開始/認証/route/logout消去と遅延応答破棄を引き継ぐ。確認は限定rendererの単体、実Router/認証回帰、専用Compose/架空ReportとChromiumのネットワーク監視で行う。配布のlicense/NOTICEは[Frontend手順](../../frontend/README.md)と既存THIRD-PARTY-NOTICESへ反映する。
+
+一次資料：[markdown-it安全性](https://github.com/markdown-it/markdown-it/blob/15.0.3/docs/safety.md)、[v15移行](https://github.com/markdown-it/markdown-it/blob/15.0.3/docs/migration/migration_v15.md)、[DOMPurify](https://github.com/cure53/DOMPurify/tree/3.5.0)、[3.5.0 release](https://github.com/cure53/DOMPurify/releases/tag/3.5.0)。
