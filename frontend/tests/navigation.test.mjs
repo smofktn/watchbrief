@@ -44,3 +44,13 @@ test('query parsing accepts one known path, canonicalizes it and removes unused 
     assert.equal(safeReturnPath(path), '/me')
   }
 })
+
+test('Collection history selector and selected Collection routes are protected and canonical', () => {
+  for (const path of ['/reports/collections', '/reports/collections/01ARZ3NDEKTSV4RRFFQ69G5FAV']) {
+    assert.equal(isProtectedPath(path), true)
+    assert.equal(loginDestination(`?${new URLSearchParams({ return_to: path })}`), path)
+  }
+  for (const path of ['/reports/collections/invalid', '/reports/collections/81ARZ3NDEKTSV4RRFFQ69G5FAV', '/reports/collections/01arz3ndektsv4rrffq69g5fav', '/reports/collections?x=1']) {
+    assert.equal(safeReturnPath(path), '/me')
+  }
+})

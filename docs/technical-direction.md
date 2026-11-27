@@ -137,3 +137,5 @@ User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](..
 既存Collection一覧API・Job用cursor・認証session/useResourceを使い、追加依存/runtime/DBスキーマ/migration/index/権限を増やさない。選択画面と選択Collectionの深いURLを分ける。候補を取得後に履歴APIを呼ぶが、APIはブラウザ側の選択や先行確認を信頼せず、CollectionとJobの所有者条件をSQLで再検証する。
 
 共通化は既存Job cursor・認証・UI資源管理に限る。#88の日付グループ/全Job読み取りを無理にCollection featureへ統合しない。cursorはCollectionスコープや認可を表さず、切替時には破棄し、SQLは各ページでCollection条件を固定する。
+
+選択URLのroute切替中だけは、同じ認証epochで直前の候補GETが確認したCollection候補をメモリ保持し、次の候補GETが検証済みになった時点で置き換える。明示更新、取得失敗、route外遷移、logout/identity recheckで直ちに消し、abort後の古い応答を候補へ反映しない。候補はUI選択肢の表示専用で、履歴APIの認可を代替しない。画面状態の境界は[Collection別画面仕様](画面仕様/Collection別の予定・結果一覧.md#urlと認証)を参照する。

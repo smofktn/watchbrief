@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 original = runpy.run_path(str(ROOT / 'scripts/seed-reports.py'))
 
 
-def fixture_rows(owner, count=35):
+def fixture_rows(owner, count=35, collection_id=None, collection_name=None):
     old_ids, old_rows = original['fixture_rows'](owner)
     rows = []
     first = None
@@ -36,7 +36,9 @@ def fixture_rows(owner, count=35):
             if table == 'collections':
                 row['name'] = '日付別検証（架空）'+str(i)
             if table == 'generation_jobs':
-                row.update(scheduled_at=at, collection_name='日付別検証（架空）'+str(i), status=state)
+                row.update(scheduled_at=at, collection_name=collection_name or '日付別検証（架空）'+str(i), status=state)
+                if collection_id is not None:
+                    row['collection_id'] = collection_id
                 snapshot = json.loads(row['input_snapshot'])
                 snapshot['fixture'] = 'daily-jobs-v1'
                 row['input_snapshot'] = json.dumps(snapshot, ensure_ascii=False)

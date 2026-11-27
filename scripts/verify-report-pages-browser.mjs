@@ -1,7 +1,7 @@
 // The outer runner supplies only fictional credentials and its disposable DB.
 import assert from 'node:assert/strict'
 export const verifyPages = async ({ checkpoint, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }) => {
-  const count = () => evaluate("document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"])').length")
+  const count = () => evaluate("document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"]):not([href=\"/reports/collections\"])').length")
   const more = "[...document.querySelectorAll('button')].some(b=>b.textContent==='もっと読む')"
   checkpoint('login-and-first-30')
   await navigate('/reports')
@@ -9,7 +9,7 @@ export const verifyPages = async ({ checkpoint, evaluate, waitFor, navigate, cli
   await submit()
   await waitFor(more)
   assert.equal(await count(),30)
-  const firstIDs=await evaluate("[...document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"])')].map(a=>a.getAttribute('href'))")
+  const firstIDs=await evaluate("[...document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"]):not([href=\"/reports/collections\"])')].map(a=>a.getAttribute('href'))")
   checkpoint('db-outage-retains-page')
   stopDB()
   await click('もっと読む')
@@ -27,11 +27,11 @@ export const verifyPages = async ({ checkpoint, evaluate, waitFor, navigate, cli
   await evaluate('window.releasePage();window.releasePage=undefined')
   await waitFor("document.querySelector('main').textContent.includes('すべての保存済みReportを表示しました')")
   assert.equal(await count(),35)
-  const allIDs=await evaluate("[...document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"])')].map(a=>a.getAttribute('href'))")
+  const allIDs=await evaluate("[...document.querySelectorAll('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"]):not([href=\"/reports/collections\"])')].map(a=>a.getAttribute('href'))")
   assert.equal(new Set(allIDs).size,35)
   assert.deepEqual(allIDs.slice(0,30),firstIDs)
   checkpoint('safe-detail-and-reset')
-  await evaluate("document.querySelector('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"])').click()")
+  await evaluate("document.querySelector('main a[href^=\"/reports/\"]:not([href=\"/reports/daily\"]):not([href=\"/reports/collections\"])').click()")
   await waitFor("document.querySelector('.report-body h1')!==null")
   assert(await evaluate("!document.querySelector('.report-body script,.report-body img') && window.reportExecuted===undefined"))
   await evaluate("document.querySelector('nav a[href=\"/reports\"]').click()")

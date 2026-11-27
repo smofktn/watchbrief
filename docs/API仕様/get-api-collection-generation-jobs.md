@@ -51,7 +51,7 @@ Owned Collectionの存在判定とページ取得を単一SQL文の同一スナ�
 | 404 | `not_found` | Collection不存在・他者所有・削除済み |
 | 500 | `internal_error` | DB障害、timeout、保存内容不整合 |
 
-全応答に`Cache-Control: no-store`。GETは書き込みとCookie更新をしない。内部SQL原因・cursor・Collection名・ID・Job内容をレスポンス/ログへ出さず、固定イベントとoperation/stage/result/versionだけを記録する。
+全応答に`Cache-Control: no-store`。GETは書き込みとCookie更新をしない。内部SQL原因・cursor・Collection名・ID・Job内容をエラーレスポンス/ログへ出さず、固定イベントとoperation/stage/result/versionだけを記録する。正常JSONは上記契約どおりのCollection名・ID・Job summaryを返す。
 
 ## 確認観点
 

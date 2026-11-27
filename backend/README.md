@@ -252,3 +252,11 @@ GET /api/reportsは認証を先に照合し、初回/続きとも31件までのS
 ルートの `make verify-daily-jobs` は既存verify runnerの専用modeで、使い捨てCompose/架空履歴/Chromiumだけを使う。混合状態・境界/マイクロ秒・JST・所有者/削除済みCollection・不正cursor/認証優先・実DB停止復旧/保持・更新・認証消去/遅延破棄・履歴不変・通常DB稼働状態不変・後片付けと秘密値非混入を検査する。通常DBにseed/migrationを実行しない。seedは実生成成功ではない。事前条件は既存の隔離検証手順と同じで、runtime/lockfileは維持し `npm ci --ignore-scripts` を使う。
 
 契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。
+
+## Collection別の保存済み予定・結果（Issue #90）
+
+ルートの `make verify-collection-jobs` は専用Compose project/空きport/架空Userだけを使い、Collection所有者とJob所有者、同一SQL snapshot、空履歴、削除済みCollection、0/30/31/35件、cursor境界、4状態、Report詳細認可、実DB停止・復旧、Chromiumの深URL復帰/選択切替/更新/logoutを確認します。最後に履歴全体と通常DBの状態を照合し、このrun専用projectとprivate fixtureを削除します。通常DBを起動・停止・初期化せず、migrationも追加しません。
+
+依存とChromiumの準備は[既存隔離検証手順](../docs/verification-issue-17.md)と同じです。共有ライブラリが必要な場合は `BROWSER_LIBRARY_PATH` に既存directoryを指定します。実動作確認済みと未確認の区別をIssue/PRへ記録します。
+
+契約は[Collection別Job API](../docs/API仕様/get-api-collection-generation-jobs.md)と[画面仕様](../docs/画面仕様/Collection別の予定・結果一覧.md)を参照してください。

@@ -30,6 +30,7 @@ def free_port():
 
 def main():
     daily = sys.argv[1:] == ['--daily-jobs']
+    collection_jobs = sys.argv[1:] == ['--collection-jobs']
     pages = sys.argv[1:] == ['--report-pages']
     markdown = sys.argv[1:] == ['--report-markdown']
     schedules = sys.argv[1:] == ['--collection-schedules']
@@ -37,7 +38,7 @@ def main():
     targets = sources or sys.argv[1:] == ['--collection-targets']
     updating = targets or sys.argv[1:] == ['--collection-update']
     creation = updating or sys.argv[1:] == ['--collection-creation']
-    if sys.argv[1:] and not (creation or markdown or pages or daily):
+    if sys.argv[1:] and not (creation or markdown or pages or daily or collection_jobs):
         raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='watchbrief-issue17-') as directory:
@@ -169,6 +170,13 @@ def main():
                 for seed in ('seed-collections.py', 'seed-daily-jobs.py' if daily else 'seed-report-pages.py' if pages else 'seed-reports.py'):
                     script(seed, '--login-id', login)
                     script(seed, '--login-id', login)
+                if collection_jobs and login == logins[0]:
+                    owner = sql("SELECT id FROM app.users WHERE login_id='"+login+"'")
+                    selected_collection = sql("SELECT id FROM app.collections WHERE user_id='"+owner+"' AND name='架空コレクション' ORDER BY display_order,id LIMIT 1")
+                    daily_seed = runpy.run_path(str(stage / 'scripts/seed-daily-jobs.py'))
+                    _, browser_rows = daily_seed['fixture_rows'](owner, 4, selected_collection, '架空コレクション')
+                    literal = daily_seed['original']['literal']
+                    sql('BEGIN;'+''.join('INSERT INTO app.'+table+'('+','.join(row)+') VALUES ('+','.join(literal(v) for v in row.values())+');' for table,row in browser_rows)+'COMMIT;')
             ids = json.loads(sql("SELECT json_object_agg(u.login_id,json_build_object('collection',c.id,'report',r.id)) FROM app.users u JOIN app.generation_jobs j ON j.user_id=u.id JOIN app.collections c ON c.id=j.collection_id JOIN app.generation_attempts a ON a.generation_job_id=j.id JOIN app.reports r ON r.generation_attempt_id=a.id"))
             markdown_history = None
             if markdown:
@@ -270,6 +278,12 @@ def main():
                     daily_checks = runpy.run_path(str(stage / 'scripts/verify-daily-jobs.py'))['verify'](request,sql,token,other_token)
                     tokens.extend(daily_checks['tokens'])
                     daily_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
+                collection_history = None
+                collection_checks = None
+                if collection_jobs:
+                    collection_checks = runpy.run_path(str(stage / 'scripts/verify-collection-generation-jobs.py'))['verify'](request,sql,token,other_token)
+                    tokens.extend(collection_checks['tokens'])
+                    collection_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
                 if pages:
                     page_checks = runpy.run_path(str(stage / 'scripts/verify-report-pages.py'))['verify'](request,sql,token,other_token)
                     tokens.extend(page_checks['tokens'])
@@ -284,6 +298,10 @@ def main():
                     status, headers, body = request(path, token, data)
                     assert status == 500 and json.loads(body)['error']['code'] == 'internal_error'
                     assert headers.get('Set-Cookie') is None, 'Failure altered Cookie'
+                if collection_jobs:
+                    status, headers, body = request('/api/collections/'+collection_checks['identifiers'][-1]+'/generation-jobs', token)
+                    assert status == 500 and json.loads(body)['error']['code'] == 'internal_error'
+                    assert headers.get('Set-Cookie') is None
                 cli('password-reset', logins[0], passwords[2], success=False)
                 compose('up', '-d', '--wait', 'postgres')
                 assert sql('SELECT json_agg(u ORDER BY id)::text FROM app.users u') == before
@@ -309,12 +327,15 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown, verify_pages=pages, verify_daily=daily)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown, verify_pages=pages, verify_daily=daily, verify_collection_jobs=collection_jobs)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
                 if daily:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in daily_history.items())
                     print('Daily Jobs viewing preserved complete saved history: passed',flush=True)
+                if collection_jobs:
+                    assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in collection_history.items())
+                    print('Collection Jobs viewing preserved complete saved history: passed',flush=True)
                 if pages:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in page_history.items())
                     print('Report pages viewing preserved complete saved history: passed',flush=True)
@@ -329,6 +350,8 @@ def main():
                         assert all(entry.get(key) for key in ('time', 'msg', 'operation', 'stage', 'result', 'version'))
                 operations = {json.loads(line).get('operation') for line in log_text.splitlines() if json.loads(line).get('level') == 'ERROR'}
                 assert {'login', 'current_user', 'collection_read', 'report_read', 'logout'} <= operations
+                if collection_jobs:
+                    assert 'collection_generation_jobs_read' in operations
                 hashes = sql("SELECT string_agg(password_hash,chr(10)) FROM app.users").splitlines()
                 hashes += [row['password_hash'] for row in json.loads(before)]
                 token_hashes = sql("SELECT string_agg(encode(token_hash,'hex'),chr(10)) FROM app.auth_sessions").splitlines()
@@ -342,6 +365,11 @@ def main():
                     forbidden += json.loads(sql("SELECT json_agg(collection_name)::text FROM app.generation_jobs"))
                     forbidden += json.loads(sql("SELECT json_agg(input_snapshot::text)::text FROM app.generation_jobs"))
                     forbidden += [value for value in daily_checks['cursors'] if value]
+                if collection_jobs:
+                    forbidden += [value for value in collection_checks['cursors'] if value]
+                    forbidden += [value for value in collection_checks['identifiers'] if value]
+                    forbidden += json.loads(sql("SELECT coalesce(json_agg(collection_name)::text,'[]') FROM app.generation_jobs"))
+                    forbidden += json.loads(sql("SELECT coalesce(json_agg(input_snapshot::text)::text,'[]') FROM app.generation_jobs"))
                 if pages:
                     forbidden += [value for value in page_checks['cursors'] if value]
                 for value in forbidden:
