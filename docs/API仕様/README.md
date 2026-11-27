@@ -14,6 +14,7 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 | `PATCH /api/collections/{id}` | [本体・対象・情報源・Scheduleの一括更新](patch-api-collections.md) | Issue #74・#78・#80・#82。全体版の照合・同一要求の再試行 |
 | `GET /api/reports`・`GET /api/reports/{id}` | [保存済みReport取得](get-api-reports.md) | #57の委任に基づく実装判断。Jobによる所有者限定。#86で一覧は30件ずつcursor取得、詳細は保存本文を返し#84の安全表示を維持 |
 | `GET /api/generation-jobs` | [保存済み予定・結果](get-api-generation-jobs.md) | #88の直接採用範囲を具体化する実装判断。Job所有者限定・4状態・30件ずつcursor取得 |
+| `GET /api/collections/{id}/generation-jobs` | [Collection別の保存済み予定・結果](get-api-collection-generation-jobs.md) | #90の直接委任範囲を具体化する実装判断。現在CollectionとJobの両所有者条件・4状態・30件ずつcursor取得 |
 
 ログイン・本人情報取得は [Issue #53](https://github.com/smofktn/watchbrief/issues/53)、ログアウトAPIは [Issue #54](https://github.com/smofktn/watchbrief/issues/54)を対象とする。その他の後続APIは各Issueの設計時に追加する。
 

@@ -41,3 +41,5 @@ Issue #68で画面・共通枠・feature・共有sessionへ責務を分離し、
 Issue #18の最初の範囲で `/collections/new` を保護パスへ追加する。未認証の直接アクセスはログイン後に空の新規フォームへ復帰する。保存中の401では下書きを消去する。下書きや要求番号を戻り先URLへ含めない。[新規作成](コレクションの新規作成.md)を参照する。
 
 Issue #88で `/reports/daily` を保護パスへ追加する。未認証・失効後に同URLへ復帰する。[日付別画面](日付別の予定・結果一覧.md)を参照する。
+
+Issue #90で `/reports/collections` と `/reports/collections/{正規ULID}` を保護パスへ追加する。未認証・失効後は選択画面または選択中Collectionの履歴へ復帰し、任意query/fragmentは保持しない。[Collection別画面](Collection別の予定・結果一覧.md)を参照する。

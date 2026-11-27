@@ -455,3 +455,9 @@ Report→Attempt→Jobの所有者条件を維持して31件まで取得する�
 既存generation_jobs(user_id,scheduled_at,id)索引とAttemptのgeneration_job_id一意索引、Reportのgeneration_attempt_id一意索引、APIの既存SELECT権限を使う。Job起点でLEFT JOINし、所有者WHEREと(scheduled_at,Job.id)の降順・厳密な小なり境界でLIMIT 31、最大30件を返す。予定時刻はUTCマイクロ秒を保持する。
 
 論理構造・物理型・権限・migrationは追加変更しない。削除済みCollectionへのJOINは不要。成功とReport有無の不整合は内部障害で閉じ、閲覧で履歴を修復しない。API契約は[Job一覧](API仕様/get-api-generation-jobs.md)。大規模履歴の実行計画と全ページsnapshotは今回保証しない。
+
+## Collection別Job一覧の読み取り（Issue #90）
+
+既存の `generation_jobs(collection_id, scheduled_at)` 一意索引と `generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引・API SELECT権限を使う。1 SQL文で、本人所有の現在Collectionを確認し、その同一スナップショットから `j.user_id` と `j.collection_id` の両条件でJobを検索する。Jobを起点にAttempt/ReportをLEFT JOINし、queuedを含む。Collectionが存在しない/所有者が違う/削除済みの場合は結果に404判定を返し、有効なCollectionにJobがない場合は200空配列とする。
+
+予定時刻・Job IDの降順、既存Job cursorの厳密なtuple境界、31件取得・30件返却を使う。cursorに含まれるCollectionを信頼せず、初回・各続き取得で所有者と選択Collection条件を再適用する。テーブル、論理関係、migration、権限の追加は行わない。既存索引を利用するクエリであり、新indexは要求しない。代表的な小規模fixtureで機能を検証するが、大規模履歴性能と全ページsnapshotは保証しない。[API](API仕様/get-api-collection-generation-jobs.md)を参照する。

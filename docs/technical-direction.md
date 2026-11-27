@@ -131,3 +131,9 @@ User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](..
 ## 日付別履歴の読み取り（Issue #88）
 
 既存Vue/Go/SQL＋sqlc、共通session/useResourceで構築し、新しい依存・runtime・migrationを追加しない。[Job一覧API](API仕様/get-api-generation-jobs.md)は既存成功Report一覧と異なるJob用cursorを使い、Frontendはcursorを解読・再生成しない。固定30件のkeysetと手動更新で開始する。
+
+## Collection別履歴の読み取り（Issue #90）
+
+既存Collection一覧API・Job用cursor・認証session/useResourceを使い、追加依存/runtime/DBスキーマ/migration/index/権限を増やさない。選択画面と選択Collectionの深いURLを分ける。候補を取得後に履歴APIを呼ぶが、APIはブラウザ側の選択や先行確認を信頼せず、CollectionとJobの所有者条件をSQLで再検証する。
+
+共通化は既存Job cursor・認証・UI資源管理に限る。#88の日付グループ/全Job読み取りを無理にCollection featureへ統合しない。cursorはCollectionスコープや認可を表さず、切替時には破棄し、SQLは各ページでCollection条件を固定する。

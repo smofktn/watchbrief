@@ -423,7 +423,7 @@ AIが出力するMarkdown断片では、通常の文章、段落、太字、斜�
 
 #17の委任に基づく実装判断として、`/reports` の最小リンク一覧と `/reports/{ULID}` の読み取り専用詳細を用意する。管理コマンドが架空の成功Job・Attempt・Reportと構造化データを一括保存し、ログイン後に本人の保存済み本文だけを読む。Collectionを削除した後も履歴の所有者はJobから判定する。
 
-Issue #57では本文をテキスト表示した。現在の表示方法は[保存済みReportの安全なMarkdown表示](#保存済みreportの安全なmarkdown表示)に従う。日付別・Collection別の本格一覧は #18の後続で扱う。生成、Scheduler・Worker、AI・外部取得はここでは行わない。具体契約は[API](API仕様/get-api-reports.md)と[画面](画面仕様/保存済みReportの取得.md)を参照する。
+Issue #57では本文をテキスト表示した。現在の表示方法は[保存済みReportの安全なMarkdown表示](#保存済みreportの安全なmarkdown表示)に従う。日付別とCollection別の一覧契約はそれぞれ[#88](#日付別の保存済み予定結果一覧issue-88合意済み)・[#90](#collection別の保存済み予定結果一覧issue-90)で具体化する。生成、Scheduler・Worker、AI・外部取得はここでは行わない。具体契約は[API](API仕様/get-api-reports.md)と[画面](画面仕様/保存済みReportの取得.md)を参照する。
 
 ## Collection本体の新規作成（Issue #18の最初の範囲・合意済み）
 
@@ -486,3 +486,11 @@ HTMLは文字表示、画像は読込しないalt文字表示とし、埋込/外
 現在のcronから過去予定を復元せず、Jobのない日を作らない。削除済みCollectionもJob.user_idで本人の履歴を認可する。失敗の技術的理由・Attempt・入力snapshotは公開しない。生成実行・有効化・外部取得・AWS操作は含めず、既存成功Report一覧と詳細を維持する。
 
 利用者が採用範囲に直接了承した記録は[#18の採用コメント](https://github.com/smofktn/watchbrief/issues/18#issuecomment-7208655478)。以下のURL・JSON・cursor等は担当の通常の実装判断であり、本人による各方式の直接選択とは区別する。[API契約](API仕様/get-api-generation-jobs.md)と[画面仕様](画面仕様/日付別の予定・結果一覧.md)を参照する。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+既存レポート画面から本人の現在Collectionを選び、そのCollectionの保存済み予定・結果だけを新しい順に30件ずつ閲覧する。待機中・実行中・成功・失敗を日本語/JSTで表示し、成功だけ既存Report詳細へ移動する。空履歴は「まだレポートはありません」。手動更新は候補Collectionを再取得してから履歴の先頭30件を読み直す。選択中のCollectionは深いURLで保ち、未認証時はログイン後に復帰する。
+
+削除済みCollectionは選択候補・専用導線に含めず、削除後の履歴は既存の日付別一覧で閲覧する。Collection設定画面からReportへの導線は作らない。続き失敗時は既表示とcursorを保持して同じ境界から再試行する。切替・認証変化・route移動・logoutでは古いCollectionの一覧/cursorと遅延応答を破棄する。既存の成功Report一覧・詳細と日付別一覧を維持し、生成・外部取得・home・有効化・削除・並べ替えは含めない。
+
+URL・JSON・cursor等は[#90](https://github.com/smofktn/watchbrief/issues/90)の直接委任範囲を満たす通常の実装判断であり、利用者が各方式を個別選択したとは扱わない。[Collection別Job API](API仕様/get-api-collection-generation-jobs.md)と[画面仕様](画面仕様/Collection別の予定・結果一覧.md)を参照する。

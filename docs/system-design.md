@@ -956,3 +956,11 @@ APIは認証を先に照合し、31件までのkeyset queryから最大30件と�
 HTTP→GenerationJobsユースケース→sqlc/pgxで認証後に所有者条件付きSELECTを行う。Jobを起点にAttempt/ReportをLEFT JOINし、Attemptのない待機中Jobも返す。成功状態とReport有無の不整合は内部障害として閉じる。既存の成功Report一覧・詳細は独立して維持する。
 
 ブラウザは共通useResourceの初回取得・認証epoch・消去を維持し、日付別featureが追加取得と手動更新を担当する。続き失敗は既表示とcursorを保持、route/認証変化/logout/更新開始で旧応答を破棄する。日本時間の日付で全取得行をまとめるためページ境界で同日見出しを重複させない。API/画面の具体契約は[Job一覧API](API仕様/get-api-generation-jobs.md)と[日付別画面](画面仕様/日付別の予定・結果一覧.md)。生成・外部通信・永続cacheは追加しない。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+既存 `/api/collections` で本人の現在Collection候補を取得し、画面は候補取得後に選択CollectionのJob APIを呼ぶ。選択URLのIDが候補にない場合は履歴APIを呼ばず「見つかりません」とし、API側でもCookie由来User IDと現在Collectionを再検証する。新しい読み取りAPIは認証後にqueryを検証し、Collection不存在・他者所有・削除済みを同じ404にする。
+
+Collection存在確認とJob取得は1つのSQL文のスナップショットで行い、Collection削除との間に不整合な2段階読み取りを作らない。Job検索は `j.user_id` と `j.collection_id` の両方を必須条件にする。削除後の履歴はこのAPIから返さず、削除済みCollectionへのJOINを要求しない既存日付別APIに残す。ページ境界は既存のJob専用cursorとUTCマイクロ秒を再利用し、cursor自体は所有権・Collection選択を表さない。Collection条件は全ページのSQLへ必ず適用する。
+
+画面は既存 `useResource`/共有sessionでCollection候補取得とJob取得を直列化し、route/auth epoch/更新で全体を消去する。候補取得・履歴取得・追加取得はいずれも同じ遷移世代とAbortSignalに属し、切替前応答を採用しない。候補一覧と履歴APIは読み取り専用で、失敗時に設定・Job・Reportを修復/変更しない。具体契約は[API](API仕様/get-api-collection-generation-jobs.md)と[画面](画面仕様/Collection別の予定・結果一覧.md)。

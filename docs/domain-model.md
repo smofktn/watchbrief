@@ -166,3 +166,9 @@ Reportは生成時に組立て済みの完成本文を保持する読み取り�
 予定・結果の一覧は保存済みGenerationJobを起点にする。予定時刻とJob IDの降順に読み、日本時間の日付でまとめる。状態はJobの4状態を使い、成功だけReport参照を持つ。閲覧でJob/Attempt/Reportを作成・変更せず、現在cronから存在しないJobを復元しない。Collection削除後もJobの所有者で認可する。
 
 [採用範囲](product-definition.md#日付別の保存済み予定結果一覧issue-88合意済み)と[Job一覧API](API仕様/get-api-generation-jobs.md)を参照する。生成の状態遷移実行は#19のまま。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+現在のCollectionを選ぶ機能は保存済みJobの読み取り範囲を絞るだけで、Jobの状態遷移・所有者・Reportの業務関係を変えない。選択できるのは認証中Userが現在所有するCollectionだけ。Job側の `user_id` と `collection_id` を同時に照合し、所有者と選択先の双方を限定する。削除済みCollectionは現在設定として選択できないが、Job.user_idから認可する既存の日付別履歴では閲覧できる。
+
+有効なCollectionにJobがない場合は空配列を返し、「まだレポートはありません」と表示する。存在しない・他者所有・削除済みCollectionの違いは利用者へ明かさず404とする。ページ移動・手動更新・Collection切替は読み取りだけで、保存済み履歴の状態や順序を変更しない。[正本](product-definition.md#collection別の保存済み予定結果一覧issue-90)を参照する。
