@@ -10,6 +10,7 @@ const { state, message, data, load, nextCursor, moreBusy, moreMessage, loadMore 
 <template>
   <section aria-labelledby="reports-title">
     <h2 id="reports-title">保存済みReport（読み取り専用）</h2>
+    <RouterLink v-if="route.path === '/reports'" to="/reports/daily">日付別の予定・結果</RouterLink>
     <p v-if="state === 'loading'" role="status">Reportを読み込んでいます。</p>
     <template v-else-if="state === 'error'">
       <p role="alert">{{ message }}</p><Button label="Reportを再試行" @click="load()" />

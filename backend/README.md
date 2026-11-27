@@ -244,3 +244,11 @@ GET /api/reportsは認証を先に照合し、初回/続きとも31件までのS
 境界0/30/31/35、同日時と同一秒のマイクロ差/ID逆順、同cursor再試行、新Report挿入、他者/改変cursor・削除済Collection履歴、query拒否/未認証優先、履歴不変と発行済み有効cursor/秘密/本文のログ非混入を検査する。Chromiumでは30+5/終了、実DB停止/復旧/保持、二重操作、安全な詳細、一覧復帰/再読込、401/route/logoutの消去と遅延応答を確認する。実施結果・省略理由はIssue/PRへ記録する。
 
 `make seed-report-pages LOGIN_ID=fictional_user` は別namespaceへ架空35件を原子的追加する手動入口で、既存値の上書きをしない。seedは実生成の成功ではない。この作業では通常DBで実行せず、runner内だけで確認する。本格の日付/Collection/Job状態/home・#19/#20・有効化/配備は含めない。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+ルートの `make verify-daily-jobs` は既存verify runnerの専用modeで、使い捨てCompose/架空履歴/Chromiumだけを使う。混合状態・境界/マイクロ秒・JST・所有者/削除済みCollection・不正cursor/認証優先・実DB停止復旧/保持・更新・認証消去/遅延破棄・履歴不変・通常DB稼働状態不変・後片付けと秘密値非混入を検査する。通常DBにseed/migrationを実行しない。seedは実生成成功ではない。事前条件は既存の隔離検証手順と同じで、runtime/lockfileは維持し `npm ci --ignore-scripts` を使う。
+
+契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。

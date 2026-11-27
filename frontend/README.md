@@ -143,3 +143,11 @@ markdown-it 15.0.3（MIT）とDOMPurify 3.5.0（Apache-2.0選択）をexact pin�
 cursorはサーバー値のまま再送し、解読/再生成/URL・storage永続化しない。順序検査はUTC小数部6桁の文字列とULIDで行い、JSミリ秒へ丸めない。重複/逆順/境界重複・繰返しcursor等は全ページを追加せず、再試行できる。日時のDate利用は暦の妥当性だけで順序比較には使わない。全ページsnapshotではなく、新しい先頭は再読込で確認する。[API](../docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)・[画面](../docs/画面仕様/保存済みReportの取得.md#保存済み成功report一覧の追加取得)を参照。
 
 単体/実Routerは `make frontend-test`、使い捨てDB/Chromiumはルート `make verify-report-pages`。0/30/31/35・同一秒マイクロ差とID逆順・同日時、追加取得失敗/timeout/重複・不正payload・二重操作、認証失効/離脱/遅い応答を確認する。npm ci --ignore-scripts・既存runtime/依存/lockは維持し、追加依存はない。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+検証入口はルートの `make verify-daily-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](../backend/README.md#日付別の保存済み予定結果issue-88)を参照する。
+
+契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。

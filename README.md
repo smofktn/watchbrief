@@ -127,6 +127,14 @@ Collection本体の編集は版10の明示migration後、停止中の詳細か�
 
 ### 保存済みReport一覧の追加取得（Issue #86）
 
-`/reports` は新しい順に30件まで表示し、「もっと読む」で30件ずつ追加します。続きの失敗は表示済み項目を残して再試行でき、一覧から離れる/再読み込みすると最初から表示します。新しい先頭分は再読み込みで確認します。これは成功Reportの最小一覧で、日付/Collection別・待機/実行/失敗・homeは後続です。
+`/reports` は新しい順に30件まで表示し、「もっと読む」で30件ずつ追加します。続きの失敗は表示済み項目を残して再試行でき、一覧から離れる/再読み込みすると最初から表示します。新しい先頭分は再読み込みで確認します。日付別の予定・結果と4状態は直下の「日付別の保存済み予定・結果（Issue #88）」を参照してください。Collection別表示とhomeは後続です。
 
 検証入口は `make verify-report-pages`、手動の架空35件seedは `make seed-report-pages LOGIN_ID=fictional_user`。本作業では通常DBへseedを行わず、専用の使い捨て環境だけで検証します。[API契約](docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)・[検証手順](backend/README.md#保存済みreport一覧の追加取得issue-86)を参照してください。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+検証入口はルートの `make verify-daily-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](backend/README.md#日付別の保存済み予定結果issue-88)を参照する。
+
+契約は[Job一覧API](docs/API仕様/get-api-generation-jobs.md)と[日付別画面](docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。

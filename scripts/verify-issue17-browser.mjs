@@ -187,7 +187,7 @@ try {
   startDB()
   await click('設定を再試行')
   await waitFor("document.querySelector('main').textContent.includes('架空コレクション')")
-  const savedReportName = fixture.verify_pages ? '追加取得用（架空）' : '保存Report確認用（架空）'
+  const savedReportName = fixture.verify_daily ? '日付別検証（架空）' : fixture.verify_pages ? '追加取得用（架空）' : '保存Report確認用（架空）'
   phase = 'report-outage'
   await evaluate("window.pauseNextMe=true;document.querySelector('nav a[href=\"/reports\"]').click()")
   await waitFor("typeof window.releaseMe === 'function'")
@@ -255,6 +255,19 @@ try {
     const { verifyMarkdown } = await import('./verify-report-markdown-browser.mjs')
     issued.push(await verifyMarkdown({ checkpoint: value => { phase = 'report-markdown-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, token, networkRequests, externalRequests }))
   }
+  if (fixture.verify_daily) {
+    // Controlled fictional status change only inside the verified disposable project.
+    // Restored after checking refresh so full history comparison remains exact.
+    const changeDailyState = failed => {
+      assert(/^[a-z0-9_-]{1,64}$/.test(fixture.login_id))
+      const selection = "SELECT a.id FROM app.generation_attempts a JOIN app.generation_jobs j ON j.id=a.generation_job_id JOIN app.users u ON u.id=j.user_id WHERE u.login_id='"+fixture.login_id+"' AND j.input_snapshot->>'fixture'='daily-jobs-v1' AND j.collection_name='日付別検証（架空）2'"
+      const statement = "BEGIN; UPDATE app.generation_jobs SET status='"+(failed ? 'failed' : 'running')+"' WHERE id=(SELECT generation_job_id FROM app.generation_attempts WHERE id=("+selection+")); UPDATE app.generation_attempts SET status='"+(failed ? 'failed' : 'running')+"',finished_at="+(failed ? "'2026-01-02T00:00:04Z'" : 'NULL')+",failure_type="+(failed ? "'unexpected_error'" : 'NULL')+" WHERE id=("+selection+"); COMMIT;"
+      const result = spawnSync('docker', ['compose','exec','-T','postgres','psql','-X','-qAt','-U','postgres','-d','watchbrief','-v','ON_ERROR_STOP=1'], { input: statement, encoding:'utf8', timeout:15000 })
+      assert.equal(result.status,0,'Fictional status control failed')
+    }
+    const { verifyDaily } = await import('./verify-daily-jobs-browser.mjs')
+    issued.push(await verifyDaily({ checkpoint: value => { phase = 'daily-jobs-' + value }, changeDailyState, call, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
+  }
   if (fixture.verify_pages) {
     const { verifyPages } = await import('./verify-report-pages-browser.mjs')
     issued.push(await verifyPages({ checkpoint: value => { phase = 'report-pages-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
@@ -264,7 +277,7 @@ try {
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
   console.log('Browser: protected Report return, safe fallback, own settings/safe Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown|report-pages)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown|report-pages|daily-jobs)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)

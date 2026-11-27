@@ -13,6 +13,7 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 | `POST /api/collections` | [Collection本体の作成](post-api-collections.md) | #18の本体作成と重複しない再試行に合意。具体契約は実装判断 |
 | `PATCH /api/collections/{id}` | [本体・対象・情報源・Scheduleの一括更新](patch-api-collections.md) | Issue #74・#78・#80・#82。全体版の照合・同一要求の再試行 |
 | `GET /api/reports`・`GET /api/reports/{id}` | [保存済みReport取得](get-api-reports.md) | #57の委任に基づく実装判断。Jobによる所有者限定。#86で一覧は30件ずつcursor取得、詳細は保存本文を返し#84の安全表示を維持 |
+| `GET /api/generation-jobs` | [保存済み予定・結果](get-api-generation-jobs.md) | #88の直接採用範囲を具体化する実装判断。Job所有者限定・4状態・30件ずつcursor取得 |
 
 ログイン・本人情報取得は [Issue #53](https://github.com/smofktn/watchbrief/issues/53)、ログアウトAPIは [Issue #54](https://github.com/smofktn/watchbrief/issues/54)を対象とする。その他の後続APIは各Issueの設計時に追加する。
 
@@ -98,5 +99,3 @@ Go標準の防御は `Sec-Fetch-Site`・`Origin` 等を参照するが、両方�
 このディレクトリは初回の設計資料として終わらせず、継続して保守する通信契約とする。APIの追加・変更時は、対応する仕様書と実装・テストを同じ変更で更新し、[画面仕様](../画面仕様/README.md)の入力・表示・状態との対応も確認する。画面の配置・操作は画面仕様に置き、API仕様へ重複して持たない。仕様書には現在の契約・未決定事項・確認観点を残し、時点に依存する検証結果と未確認の範囲はIssue・PRへ記録する。
 
 現在はログインAPI・本人情報API・認証成功時のCookie期限更新を実装済み。Swagger UI・完全なOpenAPI定義・コード生成ツールの採用は別途判断する。抜粋YAMLには未採用の提案も残るため、完成した実装契約として一括利用しない。
-
-- [保存済みGenerationJob一覧](get-api-generation-jobs.md)（Issue #88）

@@ -7,7 +7,7 @@ Issue #57の委任に基づく実装判断。Cookie認証、Job.user_idによる
 | listReports | `GET /api/reports` | `{ "reports": [ReportSummary], "next_cursor": string|null }`。最大30件、空は `[]` |
 | getReport | `GET /api/reports/{id}` | Reportオブジェクト |
 
-ReportSummaryは `id`（ULID）、`collection_name`（Job時点の履歴名）、`scheduled_at`（予定時刻）、`generated_at`（成功Attempt.finished_at）を持つ。時刻はRFC3339文字列。一覧はscheduled_at降順・id降順とし、本文・snapshot・所有者IDは返さない。成功Report一覧を30件ずつcursorで追加取得する。日付/Collection別やJob状態を含む本格一覧は後続とする。
+ReportSummaryは `id`（ULID）、`collection_name`（Job時点の履歴名）、`scheduled_at`（予定時刻）、`generated_at`（成功Attempt.finished_at）を持つ。時刻はRFC3339文字列。一覧はscheduled_at降順・id降順とし、本文・snapshot・所有者IDは返さない。成功Report一覧を30件ずつcursorで追加取得する。日付別のJob状態一覧は[Job一覧API](get-api-generation-jobs.md)で扱い、Collection別は後続とする。
 
 詳細はSummaryの4項目に `body_markdown`、`summary_markdown`（保存テキスト）、`updates_started_at`、`updates_ended_at`（Attempt.started_at）を追加する。構造化子テーブルや入力snapshotの公開APIは追加しない。本文は閲覧時に組み立て直さない。リクエストbodyは使用しない。詳細のquery契約は変更しない。一覧のqueryは次節を参照。
 
