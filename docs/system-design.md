@@ -976,3 +976,13 @@ Frontendは既存session/useResourceの認証epoch、route離脱、logout、再�
 `GET /api/home` のusecaseは試験可能な時計から現在時刻を一度だけ取得し、その瞬間のJST日付とJST 00:00から翌日00:00までの半開区間を確定する。区間と日付は同じ応答内の全Collectionで共通とし、SQLへUTC時刻境界を渡す。ブラウザtimezoneやcronから日付・予定を計算しない。
 
 現在Collection、各Collectionの本日4状態件数、既存の最新成功Report IDを1 SQL statementで読む。CollectionとJobの所有者条件、JobのCollection条件を維持する。状態件数はGenerationJob.statusの集計で、Attempt/Reportの有無に依存させない。API/画面は既存session/useResourceの更新、401、epoch変更、logout、route離脱時の消去と遅延応答破棄を継続利用する。本文/snapshot/Attempt/失敗詳細は応答へ含めない。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+ホームの編集モードは `GET /api/home` の現在順・各Collection versionを初期値とし、ドラフトだけを画面メモリに保持する。上へ/下へ移動して保存すると `PUT /api/collections/order` へ完全な期待状態と希望順、`Idempotency-Key` を送る。成功後にhomeと既存Collection一覧を再取得し、失敗時はドラフトを保持する。取消・route離脱・認証epoch変更・logoutでドラフトと要求状態を消し、古い応答を採用しない。
+
+APIは既存の認証/CSRF保護下で、user_id由来の `hashtextextended(user_id,18)` transaction advisory lockを取り、Read Committed transaction内で要求記録を先に確認する。同じkeyとdigestの再送は保存済み成功を返す。新規要求は現在の本人Collection全体を `display_order,id` でロック付き読み取りし、期待する `{id,version}` 配列が順序・構成・版まで完全一致すること、希望ID列が期待列と重複なく同じ集合であることを確認する。不一致は409であり、他者・不存在・削除済みの詳細は返さない。
+
+全体versionと既存の作成/更新要求digest・replayを維持し、更新対象のdisplay_order・version・updated_atと本人/key/input_digest要求記録を同一transactionで保存する。変更のない行のversionは増やさず、全体が既に希望順なら要求記録だけを保存する。既存の成功済み作成/更新要求は先にdigest/replay照合され、同一要求再送は元の結果だけを返して現在順序を戻さない。順序変更後に古いversionで新しく編集する要求は競合する。トランザクション失敗時は一部の順序を残さない。現行にはCollection削除APIがない。将来の削除も同じowner lockを共有し、関連履歴条件を維持する必要がある。
+
+新しい要求記録のmigrationはAPIに必要なSELECT/INSERTのみを許可し、Collectionへdisplay_order/version/updated_atの列UPDATEだけを付与する。表示順一意制約、追加index、runtime/依存は設けない。下書き・要求入力を永続化せず、読み取りのhome latest Reportと本日状態、設定/履歴/Reportは変更しない。詳しい契約は[API](API仕様/put-api-collection-order.md)・[画面](画面仕様/ホーム.md#collection表示順の変更issue-96)を参照する。

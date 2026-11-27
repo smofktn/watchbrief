@@ -184,3 +184,13 @@ Reportは生成時に組立て済みの完成本文を保持する読み取り�
 ホームの補助状態は、サーバーが一度確定したJST日付に含まれる保存済みGenerationJobのstatus件数である。対象区間はJST当日00:00以上、翌日00:00未満。Collectionごとにqueued/running/succeeded/failedを数え、対象Jobが0件なら状態欄を表示しない。0件から異常・未実行・Reportなしを推定しない。最新成功Reportへのリンクと「まだレポートはありません」は既存の独立した業務状態を表す。
 
 件数はJob.statusから直接集計し、AttemptやReportの存在を条件にしない。Jobは認証Userと現在Collectionの双方に属するものに限る。閲覧で状態遷移や履歴を変更せず、生成予定も復元しない。[正本](product-definition.md#ホームの本日予定状態issue-94)を参照する。
+
+## Collection表示順の一括変更（Issue #96）
+
+表示順変更は認証中Userの現在Collection全体を対象とする。入力は変更前の順序と各Collection全体versionを前提条件として持ち、保存時に現在の完全な本人順と照合する。順序・構成・版のいずれかが変わっていれば競合とし、作成・編集・削除の結果を欠落/復活させない。Collection変更と同じUser advisory transaction lock namespace 18を共有する。削除経路を追加するときもこのlockと全体version規則を守る。
+
+要求番号と正規化入力digestを本人単位で記録し、初回の全行更新・版増加・要求記録を同一transactionで確定する。同じ番号/同じ内容の再送は成功済みの同一操作として応答し、異なる内容は競合とする。対象変更行のdisplay_order・version・updated_atだけを更新し、Report、Job、Attempt、snapshot、他User、設定の他項目は変更しない。入力不正・前提不一致・DB書込失敗では全行rollbackし、部分順序を残さない。
+
+順序変更前に成功した既存作成/更新要求のdigestとreplay記録はそのまま維持する。既存更新の同一要求再送は、通常どおり保存済み結果を返して現在の順序を戻さない。順序変更で版が進んだ後の古い版を使う新しい編集要求は競合として拒否する。
+
+表示順は一意制約を置かず、同値の場合はID昇順を保つ。0/1件では有効な保存を許し、不要なversion増加はしない。現在版を持つCollectionだけをversion対象とし、未認証・CSRF・不正ID・他User/不存在の結果で所有情報を区別しない。要求記録・画面下書きは個人情報や設定本文を複製せず、画面離脱/認証変更で下書きを消去する。[正本](product-definition.md#ホームからのcollection表示順変更issue-96)を参照する。

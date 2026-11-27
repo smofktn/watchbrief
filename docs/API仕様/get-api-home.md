@@ -1,10 +1,10 @@
-# GET /api/home — ホーム取得（Issue #92・#94）
+# GET /api/home — ホーム取得（Issue #92・#94・#96）
 
 ## 目的と採用状況
 
 認証済みUserの現在Collection、各Collectionの最新成功Reportへの参照、JST本日の保存済みGenerationJob状態件数を読む。保護画面 `/home` から利用する。業務上の範囲は[プロダクト仕様](../product-definition.md#ホームの最初の経路issue-92)・[当日状態](../product-definition.md#ホームの本日予定状態issue-94)、読み取り設計は[DB設計](../database-design.md#ホームの本日予定状態issue-94)を参照する。
 
-`GET /api/home`、応答JSON、最新判定の `scheduled_at DESC, report.id DESC`、日付/件数field名は対象範囲を満たす通常の実装契約として採用する。4状態の件数方式は窓口の実装判断であり、利用者が個々のtransport細部や文言を選択したという意味ではない。
+`GET /api/home`、応答JSON、最新判定の `scheduled_at DESC, report.id DESC`、日付/件数field名は対象範囲を満たす通常の実装契約として採用する。4状態の件数方式は窓口の実装判断であり、利用者が個々のtransport細部や文言を選択したという意味ではない。#96で一括表示順の前提確認に使うため、各Collectionの全体 `version` を追加する。
 
 ## リクエスト
 
@@ -18,15 +18,15 @@
 {
   "as_of_date": "2026-11-27",
   "collections": [
-    {"id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "name": "現在のCollection名", "latest_report_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY", "today_job_counts": {"queued": 1, "running": 1, "succeeded": 2, "failed": 1}},
-    {"id": "01ARZ3NDEKTSV4RRFFQ69G5FAW", "name": "未生成のCollection", "latest_report_id": null, "today_job_counts": {"queued": 0, "running": 0, "succeeded": 0, "failed": 0}}
+    {"id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "name": "現在のCollection名", "version": "3", "latest_report_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY", "today_job_counts": {"queued": 1, "running": 1, "succeeded": 2, "failed": 1}},
+    {"id": "01ARZ3NDEKTSV4RRFFQ69G5FAW", "name": "未生成のCollection", "version": "1", "latest_report_id": null, "today_job_counts": {"queued": 0, "running": 0, "succeeded": 0, "failed": 0}}
   ]
 }
 ```
 
 `as_of_date` はサーバーが一度読んだ現在時刻をJSTへ変換した `YYYY-MM-DD`。そのリクエストの全Collectionに適用した日付であり、Collectionが0件でも返す。各Collectionの `today_job_counts` はJSTの当日00:00以上、翌日00:00未満に予定されたJobのstatus別件数で、全値は0以上の整数。Jobが0件でもAPI fieldは4状態すべてを0として返すが、画面は件数合計0なら状態欄を表示しない。
 
-`id` は現在Collectionの正規ULID、`name` は現在の設定名、`latest_report_id` は本人・同一Collectionの保存済み成功Report IDまたはnull。Job時点の履歴名はこの応答へ含めない。本文、summary、input_snapshot、Attempt、failure理由、Job予定時刻、所有者IDも返さない。Report詳細は既存の `GET /api/reports/{id}` とその認可・履歴名表示を使う。
+`id` は現在Collectionの正規ULID、`name` は現在の設定名、`version` はCollection全体の正数版を精度を保つ正規十進文字列で返す。`latest_report_id` は本人・同一Collectionの保存済み成功Report IDまたはnull。Job時点の履歴名はこの応答へ含めない。本文、summary、input_snapshot、Attempt、failure理由、Job予定時刻、所有者IDも返さない。Report詳細は既存の `GET /api/reports/{id}` とその認可・履歴名表示を使う。versionはホーム上の並べ替え保存前提に用い、APIは読み取り専用である。
 
 最新Reportは同じCollection内で、成功Job・成功Attempt・保存済みReportの組に絞った後、`scheduled_at DESC, report.id DESC` の先頭とする。これは既存Report一覧の順序にそろえる。したがって、その後に作られたqueued/running/failed Jobや失敗Attemptは、既存の成功Reportを隠さない。
 

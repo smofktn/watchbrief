@@ -217,3 +217,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 現在CollectionごとにJST本日の保存済みGenerationJobを4状態別に数え、ホームの最新Report導線へ補助表示する。Jobが0件なら状態欄を出さず、既存のReportなし表示は独立して維持する。時刻境界・JSON・表示細部は正本と[API](API仕様/get-api-home.md)・[画面](画面仕様/ホーム.md)に従う。
 
 並べ替え・Collection削除/有効化、次回予定#34、生成・外部取得・cronからの過去Job復元は対象外。実装は親#18の子Issue/PRとして扱い、親全体を完了扱いにしない。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+ホームで現在の本人Collectionを一括並べ替えし、成功後にホーム・既存設定一覧・再読込へ反映する。保存要求は完全な現在順/versionを前提条件にし、owner lock namespace 18と同一transaction内の要求digest/replay・一括更新で競合、応答喪失、部分保存を扱う。表示順一意制約なし、同値時ID順、既存versionと要求互換を維持する。API・画面の詳細契約は[get API](API仕様/get-api-home.md)、[順序更新API](API仕様/put-api-collection-order.md)、[ホーム](画面仕様/ホーム.md)を参照する。
+
+ON/OFF、最新Report導線、本日状態、既存一覧/詳細、作成/編集と認証epochの消去を保つ。Collection削除機能は現行にないため追加せず、将来実装時はowner lockを共有する。#18は未完了。

@@ -151,3 +151,9 @@ User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](..
 既存Vue/Go/SQL+sqlc、認証session/useResource、`generation_jobs(user_id, scheduled_at, id)`索引、API SELECT権限を再利用する。時計はusecaseで差し替え可能にして、一度読んだ時刻からJST当日境界を作り、既存ホームqueryへUTC境界を渡す。1つのSQL snapshotで現在Collection、本日Job.statusの4件数、最新成功Report IDを読む。
 
 runtime、依存、テーブル、migration、index、権限は追加しない。件数0の欄省略は画面側の判断で、Job0件を失敗や未実行と解釈しない。詳細な応答と表示契約は[API](API仕様/get-api-home.md)・[ホーム](画面仕様/ホーム.md)を参照する。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+既存Vue/Go/SQL+sqlc、session/useResource、Collection全体versionとowner advisory transaction lock namespace 18を再利用する。並べ替えの期待状態と本人の全順序を比較し、`display_order,id` の現状態と各行versionが一致した場合だけ一括保存する。専用要求digest/replay記録と必要列だけのDB権限にmigrationを追加し、runtime・外部依存・表示順一意制約・登録件数上限は追加しない。
+
+Collection削除APIはまだ存在しない。将来追加する場合は同じowner lockを共有し、順序更新との競合を直列化する。ホームのReport主導線/本日件数、既存設定一覧、認証epoch/route/logout消去と遅延破棄は維持する。具体契約は[API](API仕様/put-api-collection-order.md)・[画面](画面仕様/ホーム.md#collection表示順の変更issue-96)を参照する。

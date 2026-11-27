@@ -475,3 +475,15 @@ Report→Attempt→Jobの所有者条件を維持して31件まで取得する�
 アプリケーションが一度計算したJST日の開始・翌日開始をUTC `timestamptz` 境界として渡し、`scheduled_at >= start AND scheduled_at < end` を用いる。境界精度はPostgreSQLのmicrosecond値を保持する。件数はGenerationJob.statusのFILTER集計であり、Attempt/Reportを参照しない。対象JobがないCollectionもLEFT JOINと0埋めで行を保持し、件数合計0はFrontendで状態欄を省略する。
 
 既存テーブル、論理関係、migration、index、DB権限を変更しない。Report本文/snapshot/Attempt/失敗情報を集計応答に含めない。代表的な架空fixtureで境界・所属を確認するが、大規模履歴性能を保証しない。[API](API仕様/get-api-home.md)を参照する。
+
+## Collection表示順の一括変更（Issue #96）
+
+goose版14で本人単位の `collection_order_requests(user_id, request_key, input_digest)` を追加する。user_idはusersへRESTRICT、request_keyは既存同様の小文字UUID v4、input_digestは32byte bytea、主キーは(user_id,request_key)。Collectionへの外部キーや設定本文/順序の複製は持たず、要求記録から削除済み設定を復活できないようにする。期限/自動削除はこの範囲で追加しない。
+
+Collection順序と要求記録を、作成/編集と共有する `hashtextextended(user_id,18)` transaction advisory lockの下で処理する。Read Committed transactionで要求記録を先に照合し、新要求は本人の現在行を `display_order,id` 順にロック付きで読む。期待する完全なID順・versionが現在値と一致し、希望ID列が同じ集合を一度ずつ含む場合だけ保存する。コレクション削除機能は現時点で存在しない。将来のDELETE経路もowner lockを共有し、この全件比較と直列化する。
+
+`ordered_ids` の位置を0始まりの連番display_orderとして保存する。実際に順序が変わる行だけdisplay_order・既存の全体version・updated_atを更新し、要求digest記録を同じtransactionでINSERTする。いずれかの更新/版上限/記録/commitに失敗したら全rollback。表示順の一意制約と新しいindexは追加せず、同値display_orderの取得順は既存 `display_order,id` を維持する。0/1/同一順の場合は不要なCollection version増加をしない。
+
+API roleには既存collectionsの `display_order` 列UPDATE権限だけをmigrationで追加する。`version,updated_at` は版10から既に付与済みであり、新規migrationでは再付与/Down時のREVOKEをしない。要求記録表はSELECT/INSERTのみを付与する。enabled、Collection ID/所有者/作成時刻、その他設定、生成履歴、要求記録UPDATE/DELETE、DDL/ロール管理の権限は加えない。既存 `collection_creation_requests` / `collection_update_requests` の列・digest・再送結果を変更/流用しない。所有者条件はアプリのsession由来SQLで行い、列権限だけでrow securityを保証するとは解釈しない。
+
+版14のDownは要求記録と再試行互換性を失わせるため通常操作に使わない。Downは新規の `display_order` 権限だけをREVOKEし、版10由来の `version,updated_at` 更新権限は保持する。専用隔離DBでUp/Down後も既存Collection編集が必要とする列権限が残ることを確認する。旧版は編集せず、通常起動時の自動migrationを追加しない。migration・列権限・競合/rollbackは専用隔離DBだけで検証する。[順序更新API](API仕様/put-api-collection-order.md)を参照する。
