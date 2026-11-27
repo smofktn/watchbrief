@@ -192,3 +192,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
 
 追加取得の子Issueは[#86](https://github.com/smofktn/watchbrief/issues/86)。親の設計commitを起点に子ブランチで実装し、監督レビュー用PRを#18へ提出する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+利用者の直接了承に基づく[#18の採用記録](https://github.com/smofktn/watchbrief/issues/18#issuecomment-7208655478)を正本へ反映し、親設計commitから子#88を作る。既存レポート→日付別30件→続き→成功詳細→更新/再読込→logoutを先に通し、混合4状態・境界/精度/JST・所有者/削除済みCollection・障害保持/復旧・認証/遅延破棄を使い捨てCompose/Chromiumで検証する。
+
+唯一の実装担当がセルフレビュー/修正後にbase=#18の子PRを提出し、窓口が独立レビューと親への統合を担当する。実装担当はマージ/Issue状態変更をしない。親#18全体は未完了。通常DB/AWS/元AWSフォルダーの変更は対象外。具体契約は[API](API仕様/get-api-generation-jobs.md)と[画面](画面仕様/日付別の予定・結果一覧.md)。

@@ -449,3 +449,9 @@ goose版13はwatchbrief_apiへINSERT(id,collection_id,cron_expression)とUPDATE(
 Report→Attempt→Jobの所有者条件を維持して31件まで取得する。続きは(j.scheduled_at,r.id)の厳密な小なり比較、順序は同tupleの降順。既存generation_jobs(user_id,scheduled_at,id)とReport/Attemptの一意索引・SELECT権限を使い、まずmigration/権限追加なしで構築する。境界時刻はDBのマイクロ秒を保持する。全ページのsnapshotや大規模全体の走査性能を保証するものではない。
 
 具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別Job一覧の読み取り（Issue #88）
+
+既存generation_jobs(user_id,scheduled_at,id)索引とAttemptのgeneration_job_id一意索引、Reportのgeneration_attempt_id一意索引、APIの既存SELECT権限を使う。Job起点でLEFT JOINし、所有者WHEREと(scheduled_at,Job.id)の降順・厳密な小なり境界でLIMIT 31、最大30件を返す。予定時刻はUTCマイクロ秒を保持する。
+
+論理構造・物理型・権限・migrationは追加変更しない。削除済みCollectionへのJOINは不要。成功とReport有無の不整合は内部障害で閉じ、閲覧で履歴を修復しない。API契約は[Job一覧](API仕様/get-api-generation-jobs.md)。大規模履歴の実行計画と全ページsnapshotは今回保証しない。

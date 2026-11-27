@@ -950,3 +950,9 @@ Frontendは保存済み対象ごとに情報源下書きを保持し、変更行
 APIは認証を先に照合し、31件までのkeyset queryから最大30件と次cursorを返す。ブラウザは既存useResourceの初回取得/消去を共有し、Report側composableが続きのロック/保持/再試行/遅い応答破棄を担当する。cursorをFrontendで生成/解読せず、順序はマイクロ秒を保持して検査する。
 
 具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+HTTP→GenerationJobsユースケース→sqlc/pgxで認証後に所有者条件付きSELECTを行う。Jobを起点にAttempt/ReportをLEFT JOINし、Attemptのない待機中Jobも返す。成功状態とReport有無の不整合は内部障害として閉じる。既存の成功Report一覧・詳細は独立して維持する。
+
+ブラウザは共通useResourceの初回取得・認証epoch・消去を維持し、日付別featureが追加取得と手動更新を担当する。続き失敗は既表示とcursorを保持、route/認証変化/logout/更新開始で旧応答を破棄する。日本時間の日付で全取得行をまとめるためページ境界で同日見出しを重複させない。API/画面の具体契約は[Job一覧API](API仕様/get-api-generation-jobs.md)と[日付別画面](画面仕様/日付別の予定・結果一覧.md)。生成・外部通信・永続cacheは追加しない。

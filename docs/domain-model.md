@@ -160,3 +160,9 @@ Reportは生成時に組立て済みの完成本文を保持する読み取り�
 成功した保存済みReportだけを予定時刻とReport IDの降順で段階的に読む。cursorは表示境界であり所有権/スナップショットを表さない。Collection削除後もJobの所有者で履歴を認可し、追加取得で本文/予定時刻/保存履歴を変えない。
 
 具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+予定・結果の一覧は保存済みGenerationJobを起点にする。予定時刻とJob IDの降順に読み、日本時間の日付でまとめる。状態はJobの4状態を使い、成功だけReport参照を持つ。閲覧でJob/Attempt/Reportを作成・変更せず、現在cronから存在しないJobを復元しない。Collection削除後もJobの所有者で認可する。
+
+[採用範囲](product-definition.md#日付別の保存済み予定結果一覧issue-88合意済み)と[Job一覧API](API仕様/get-api-generation-jobs.md)を参照する。生成の状態遷移実行は#19のまま。

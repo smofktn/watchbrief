@@ -127,3 +127,7 @@ CRUDなど状態を変更する処理は、重複変更を避けるため無条�
 - [#11 EC2 1台構成のインフラ・運用](https://github.com/smofktn/watchbrief/issues/11)
 
 User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](../backend/README.md#sqlcとuser保存の準備)を参照する。端末入力用x/term v0.47.0・ULID v2.1.2を管理コマンドで使用する。現在の手順は[架空User作成](../backend/README.md#架空userの作成)を参照する。
+
+## 日付別履歴の読み取り（Issue #88）
+
+既存Vue/Go/SQL＋sqlc、共通session/useResourceで構築し、新しい依存・runtime・migrationを追加しない。[Job一覧API](API仕様/get-api-generation-jobs.md)は既存成功Report一覧と異なるJob用cursorを使い、Frontendはcursorを解読・再生成しない。固定30件のkeysetと手動更新で開始する。
