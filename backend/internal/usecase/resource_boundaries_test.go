@@ -107,10 +107,10 @@ func TestResourceCancellationAndDependencies(t *testing.T) {
 					got, err = collections.Get(ctx, digest, "01ARZ3NDEKTSV4RRFFQ69G5FAV")
 					result = got.ID
 				case "reports list":
-					var got []domain.ReportSummary
-					got, err = reports.List(ctx, digest)
-					if len(got) > 0 {
-						result = got[0].ID
+					var got domain.ReportPage
+					got, err = reports.List(ctx, digest, "")
+					if len(got.Reports) > 0 {
+						result = got.Reports[0].ID
 					}
 				case "reports get":
 					var got domain.Report
@@ -129,4 +129,8 @@ func TestResourceCancellationAndDependencies(t *testing.T) {
 			})
 		}
 	}
+}
+
+func (s *resourceBoundaryStore) ListOwnedReportsBefore(c context.Context, u string, _ domain.ReportCursor) ([]domain.ReportSummary, error) {
+	return s.ListOwnedReports(c, u)
 }

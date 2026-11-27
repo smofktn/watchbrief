@@ -138,7 +138,7 @@ describe('real router and login form', () => {
 describe('resources, retry, and rendering', () => {
   test.each([
     ['/collections', { collections: [] }, 'コレクションはありません。'],
-    ['/reports', { reports: [] }, '保存済みReportはありません。'],
+    ['/reports', { reports: [], next_cursor: null }, '保存済みReportはありません。'],
     [`/collections/${id}`, collection, 'ウォッチ対象はありません。'],
   ])('renders %s empty states', async (path, body, text) => {
     const { app } = await start(path, (url) => url === '/api/me' ? me() : response(body))
@@ -146,7 +146,7 @@ describe('resources, retry, and rendering', () => {
   })
   test.each([
     ['/collections', { collections: [summary] }, '架空の設定', `/collections/${id}`, collection],
-    ['/reports', { reports: [report] }, '架空レポート', `/reports/${id}`, report],
+    ['/reports', { reports: [report], next_cursor: null }, '架空レポート', `/reports/${id}`, report],
   ])('list %s links to detail through router', async (path, list, text, target, detail) => {
     const { app, router } = await start(path, (url) => url === '/api/me' ? me() : response(url === `/api${path}` ? list : detail))
     await app.get(`a[href="${target}"]`).trigger('click')
@@ -262,7 +262,7 @@ describe('logout and stale response isolation', () => {
     const { app, fetch } = await start('/reports', (url) => url === '/api/me' ? me() : url === '/api/logout' ? response(null, 204) : pending.promise)
     await click('ログアウト')
     expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/reports', '/api/logout'])
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(app.text()).not.toContain('架空レポート')
     expect(app.find('form').exists()).toBe(true)
@@ -272,7 +272,7 @@ describe('logout and stale response isolation', () => {
     const { app, router } = await start('/reports', (url) => url === '/api/me' ? me() : url === '/api/reports' ? pending.promise : response(collection))
     await router.push(`/collections/${id}`)
     await flushPromises()
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(app.text()).toContain('架空の設定')
     expect(app.text()).not.toContain('架空レポート')
@@ -397,7 +397,7 @@ describe('logout and stale response isolation', () => {
     expect(signal?.aborted).toBe(true)
     const calls = fetch.mock.calls.length
     window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(fetch.mock.calls.length).toBe(calls)
   })
@@ -1072,5 +1072,123 @@ describe('derived Report Markdown follows resource and authentication clearing',
     await flushPromises()
     expect(app.find('.report-body').exists()).toBe(false)
     expect(app.text()).not.toContain('非公開本文')
+  })
+})
+
+describe('Report cursor continuation', () => {
+  // Distinct PG microseconds inside one millisecond, with the opposite ID order.
+  const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
+  const first = { reports: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
+  const last = { reports: rows.slice(30), next_cursor: null }
+  const count = () => wrapper!.findAll('a[href^="/reports/"]').length
+  test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
+    const { app, router, fetch } = await start('/reports', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/reports' ? response(first) : response({ ...report, id: rows[0].id }))
+    expect(count()).toBe(30)
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(app.text()).toContain('すべての保存済みReportを表示しました')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/reports?cursor=opaque_cursor_A')
+    await router.push('/reports/'+rows[0].id)
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(true)
+    await router.push('/reports')
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.find('.report-body').exists()).toBe(false)
+  })
+  test.each([
+    response({}, 500), response({}), response({ reports: [rows[0]], next_cursor: null }),
+    response({ reports: [...last.reports].reverse(), next_cursor: null }),
+    response({ reports: last.reports, next_cursor: 'unexpected_cursor' }),
+    response({ reports: last.reports }),
+    response({ reports: first.reports, next_cursor: first.next_cursor }),
+  ])('failed/malformed/overlapping/reversed continuation keeps old items and cursor for retry', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? bad : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A', '/api/reports?cursor=opaque_cursor_A'])
+  })
+  const older = (day: string, start: number) => Array.from({ length: 30 }, (_, i) => ({ ...report, id: String(start+i).padStart(26, '0'), collection_name: '追加ページ'+(start+i), scheduled_at: day+'T00:00:00.'+String(999999-i).padStart(6, '0')+'Z' }))
+  test.each([
+    { reports: [rows[30], rows[30]], next_cursor: null },
+    { reports: [{ ...rows[0], id: '00000000000000000000000999' }], next_cursor: null },
+    { reports: older('2026-03-31',100), next_cursor: first.next_cursor },
+  ])('loadMore rejects duplicate IDs, new-ID cross-page reversal and repeated cursor without consuming the boundary', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? response(bad) : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A','/api/reports?cursor=opaque_cursor_A'])
+  })
+  test('loadMore rejects an older page whose next cursor cycles to a previously consumed cursor, then retries B', async () => {
+    const second = { reports: older('2026-03-31',100), next_cursor: 'opaque_cursor_B' }
+    const third = older('2026-03-30',200)
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : !path.includes('?') ? response(first) : response(++attempts === 1 ? second : attempts === 2 ? { reports: third, next_cursor: 'opaque_cursor_A' } : { reports: third, next_cursor: null }))
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(90)
+    expect(app.text()).toContain('すべての保存済みReportを表示しました')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A','/api/reports?cursor=opaque_cursor_B','/api/reports?cursor=opaque_cursor_B'])
+  })
+  test('double operation starts one continuation, with an unchanged opaque cursor', async () => {
+    const pending = deferred<Response>()
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?'))).toHaveLength(1)
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('続きを読み込んでいます')
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(35)
+  })
+  test('continuation 401 clears all rows/cursor and returns to /reports after login', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(0)
+    expect(app.text()).not.toContain('架空ページ')
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports')
+    expect(app.findAll('button').some(button => button.text() === 'もっと読む')).toBe(false)
+  })
+  test.each(['route', 'logout', 'identity'])('late continuation after %s does not resurrect rows or cursor', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    if (action === 'route') { await router.push('/me') }
+    else if (action === 'logout') { await click('ログアウト') }
+    else { window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })) }
+    await flushPromises()
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(action === 'identity' ? 30 : 0)
+    expect(app.text()).not.toContain('架空ページ34')
+  })
+  test('timeout keeps already shown rows and retries the same cursor', async () => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (!path.includes('?')) { return response(first) }
+      if (++attempts > 1) { return response(last) }
+      return new Promise<Response>((_, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await vi.advanceTimersByTimeAsync(15001)
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A', '/api/reports?cursor=opaque_cursor_A'])
   })
 })

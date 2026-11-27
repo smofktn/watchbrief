@@ -234,3 +234,13 @@ cronの限定構文は[更新API](../docs/API仕様/patch-api-collections.md#sch
 `make verify-report-markdown` は既存の使い捨てCompose runnerで、架空User/保存済みReportと実Chromiumを検証する。`seed-markdown-reports.py` は別namespaceの新しい架空履歴を追加し、旧履歴を上書きしない。既存seedのSQL/権限は共有し、再投入時に不一致なら全体を失敗させる。手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。本作業では通常DBへは実行しない。
 
 取得API・DB・本文の変更やmigrationはない。閲覧前後の履歴全体、APIのbody_markdownとDB本文一致、所有者404を検証する。画面・依存/licenseと前提は[Frontend](../frontend/README.md#保存済みreportのmarkdown表示issue-84)を参照。通常DBの稼働状態不変と使い捨てproject/volume/private状態の除去もrunnerが確認する。
+
+## 保存済みReport一覧の追加取得（Issue #86）
+
+GET /api/reportsは認証を先に照合し、初回/続きとも31件までのSELECTから最大30件とnext_cursorを返す。続きは予定時刻とReport IDの降順tuple境界を使い、常にJob.user_idで絞る。既存のSELECT権限/索引で開始し、migrationや権限追加はしない。具体的なv1 cursor正規形・query/認証優先・限界は[API契約](../docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)を正とする。
+
+`make verify-report-pages` は専用Compose project/空きport/架空Userと新namespace35件のseedを使い、通常DBを起動/停止/移行/初期化しない。Go/Node/Frontend依存、Docker/Compose、既存goose/sqlc・Chromiumが必要。BROWSER_LIBRARY_PATHは既存の不足ライブラリディレクトリを指定でき、OSへは導入しない。終了時に専用project/volume/private状態の除去と通常DB稼働状態不変を確認する。
+
+境界0/30/31/35、同日時と同一秒のマイクロ差/ID逆順、同cursor再試行、新Report挿入、他者/改変cursor・削除済Collection履歴、query拒否/未認証優先、履歴不変と発行済み有効cursor/秘密/本文のログ非混入を検査する。Chromiumでは30+5/終了、実DB停止/復旧/保持、二重操作、安全な詳細、一覧復帰/再読込、401/route/logoutの消去と遅延応答を確認する。実施結果・省略理由はIssue/PRへ記録する。
+
+`make seed-report-pages LOGIN_ID=fictional_user` は別namespaceへ架空35件を原子的追加する手動入口で、既存値の上書きをしない。seedは実生成の成功ではない。この作業では通常DBで実行せず、runner内だけで確認する。本格の日付/Collection/Job状態/home・#19/#20・有効化/配備は含めない。

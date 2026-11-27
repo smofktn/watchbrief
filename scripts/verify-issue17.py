@@ -29,13 +29,14 @@ def free_port():
 
 
 def main():
+    pages = sys.argv[1:] == ['--report-pages']
     markdown = sys.argv[1:] == ['--report-markdown']
     schedules = sys.argv[1:] == ['--collection-schedules']
     sources = schedules or sys.argv[1:] == ['--collection-sources']
     targets = sources or sys.argv[1:] == ['--collection-targets']
     updating = targets or sys.argv[1:] == ['--collection-update']
     creation = updating or sys.argv[1:] == ['--collection-creation']
-    if sys.argv[1:] and not (creation or markdown):
+    if sys.argv[1:] and not (creation or markdown or pages):
         raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='watchbrief-issue17-') as directory:
@@ -164,7 +165,7 @@ def main():
 
             for login, password in zip(logins, passwords):
                 cli('user-create', login, password)
-                for seed in ('seed-collections.py', 'seed-reports.py'):
+                for seed in ('seed-collections.py', 'seed-report-pages.py' if pages else 'seed-reports.py'):
                     script(seed, '--login-id', login)
                     script(seed, '--login-id', login)
             ids = json.loads(sql("SELECT json_object_agg(u.login_id,json_build_object('collection',c.id,'report',r.id)) FROM app.users u JOIN app.generation_jobs j ON j.user_id=u.id JOIN app.collections c ON c.id=j.collection_id JOIN app.generation_attempts a ON a.generation_job_id=j.id JOIN app.reports r ON r.generation_attempt_id=a.id"))
@@ -264,6 +265,10 @@ def main():
                     other = request('/api/reports/'+ids[logins[1]]['markdown_report'],token)
                     missing = request('/api/reports/00000000000000000000000000',token)
                     assert other[0]==missing[0]==404 and other[2]==missing[2]
+                if pages:
+                    page_checks = runpy.run_path(str(stage / 'scripts/verify-report-pages.py'))['verify'](request,sql,token,other_token)
+                    tokens.extend(page_checks['tokens'])
+                    page_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
@@ -299,9 +304,12 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown, verify_pages=pages)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
+                if pages:
+                    assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in page_history.items())
+                    print('Report pages viewing preserved complete saved history: passed',flush=True)
                 if markdown:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in markdown_history.items())
                     print('Markdown viewing preserved all saved history and body/API values; old seed history unchanged: passed', flush=True)
@@ -322,6 +330,8 @@ def main():
                 private_content = [value for group in content for value in (group or []) if value]
                 forbidden = private_content + passwords + tokens + hashes + token_hashes + [auth_marker, '127.0.0.1', 'postgresql://', 'postgres://', '$argon2id$', 'Authorization', 'Cookie', 'watchbrief_session', '架空コレクション', '外部取得を行わない検証用。', '# 架空の保存済みReport']
                 forbidden += [p.read_text().strip() for p in (stage / '.local').glob('*-password')]
+                if pages:
+                    forbidden += [value for value in page_checks['cursors'] if value]
                 for value in forbidden:
                     assert value and value not in log_text, 'Private log content'
                 for body in responses:

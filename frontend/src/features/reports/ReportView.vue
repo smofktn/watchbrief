@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import ReportMarkdown from './ReportMarkdown.vue'
 import { useReports } from './useReports'
 const route = useRoute()
-const { state, message, data, load } = useReports()
+const { state, message, data, load, nextCursor, moreBusy, moreMessage, loadMore } = useReports()
 </script>
 
 <template>
@@ -20,6 +20,10 @@ const { state, message, data, load } = useReports()
       <ul v-else><li v-for="report in data.items" :key="report.id">
         <RouterLink :to="`/reports/${report.id}`">{{ report.collection_name }}（予定：{{ report.scheduled_at }}）</RouterLink>
       </li></ul>
+      <p v-if="moreMessage" role="alert">{{ moreMessage }}</p>
+      <p v-if="moreBusy" role="status">続きを読み込んでいます。</p>
+      <Button v-if="nextCursor" label="もっと読む" :disabled="moreBusy" @click="loadMore" />
+      <p v-else-if="data.items.length">すべての保存済みReportを表示しました。</p>
     </template>
     <article v-else-if="state === 'ready' && data && data.selected">
       <h3>{{ data.selected.collection_name }}</h3>

@@ -25,7 +25,7 @@ func WithReports(handler http.Handler, service ReportService, logger *slog.Logge
 }
 
 type ReportService interface {
-	List(context.Context, [32]byte) ([]domain.ReportSummary, error)
+	List(context.Context, [32]byte, string) (domain.ReportPage, error)
 	Get(context.Context, [32]byte, string) (domain.Report, error)
 }
 
@@ -43,16 +43,14 @@ func reportHandler(service ReportService, logger *slog.Logger, detail bool) http
 		if detail {
 			value, err = service.Get(ctx, digest, r.PathValue("id"))
 		} else {
-			var rows []domain.ReportSummary
-			rows, err = service.List(ctx, digest)
-			value = struct {
-				Reports []domain.ReportSummary `json:"reports"`
-			}{rows}
+			value, err = service.List(ctx, digest, r.URL.RawQuery)
 		}
 		if err != nil {
 			switch {
 			case errors.Is(err, domain.ErrUnauthenticated):
 				writeError(w, 401, "unauthenticated", "ログインしてください。")
+			case errors.Is(err, domain.ErrReportCursor):
+				writeError(w, 400, "invalid_request", "取得条件を確認してください。")
 			case errors.Is(err, domain.ErrInvalidIdentifier):
 				writeError(w, 400, "invalid_request", "IDを確認してください。")
 			case errors.Is(err, domain.ErrResourceNotFound):
