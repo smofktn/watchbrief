@@ -51,6 +51,26 @@ afterEach(() => {
 })
 
 describe('real router and login form', () => {
+  test('protected home deep URL restores after login and remains a separate screen from /me', async () => {
+    let authenticated = false
+    const { app, router, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null, 204) }
+      if (path === '/api/home') { return response({ collections: [] }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Fhome')
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe('/home')
+    expect(app.text()).toContain('ホーム')
+    expect(app.text()).toContain('fictional_user')
+    await router.push('/me')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/me')
+    expect(app.text()).toContain('本人情報')
+    expect(fetch.mock.calls.some(([path]) => path === '/api/home')).toBe(true)
+  })
+
   test('protected direct URL logs in and returns to the same resource; all requests use private same-origin policy', async () => {
     let authenticated = false
     const { app, router, fetch } = await start(`/collections/${id}`, (path) => {
@@ -133,6 +153,118 @@ describe('real router and login form', () => {
     await router.push('/me')
     await flushPromises()
     expect(app.text()).toContain('fictional_user')
+  })
+})
+
+describe('home Collection report links', () => {
+  test('shows current Collection names in order and links only saved successful Reports', async () => {
+    const latestID = otherId
+    const historyReport = { ...report, id: latestID, collection_name: '保存時の履歴名' }
+    const collections = [
+      { id, name: '現在の改名後Collection', latest_report_id: latestID },
+      { id: collectionID2, name: '未生成Collection', latest_report_id: null },
+    ]
+    const { app, router, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return response({ collections }) }
+      if (path === `/api/reports/${latestID}`) { return response(historyReport) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    const homeLinks = app.findAll('main section[aria-labelledby="home-title"] li a')
+    expect(app.text()).toContain('現在の改名後Collection')
+    expect(app.text()).toContain('未生成Collection')
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(homeLinks).toHaveLength(1)
+    expect(homeLinks[0]!.attributes('href')).toBe(`/reports/${latestID}`)
+    await homeLinks[0]!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/${latestID}`)
+    expect(app.text()).toContain('保存時の履歴名')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/home')
+  })
+
+  test('updates from the first page and distinguishes an empty Collection list', async () => {
+    let reads = 0
+    const { app, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        reads++
+        return response({ collections: reads === 1
+          ? [{ id, name: '更新前', latest_report_id: otherId }]
+          : [{ id, name: '更新後', latest_report_id: null }] })
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.text()).toContain('更新前')
+    await click('更新')
+    expect(app.text()).not.toContain('更新前')
+    expect(app.text()).toContain('更新後')
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(app.findAll('main section[aria-labelledby="home-title"] a[href^="/reports/"]')).toHaveLength(0)
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/home')).toHaveLength(2)
+  })
+
+  test('empty Home and failed refresh do not keep old Collection or Report links', async () => {
+    let reads = 0
+    const { app } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        reads++
+        return reads === 1 ? response({ collections: [{ id, name: '古いCollection', latest_report_id: otherId }] }) : response({ error: { code: 'internal_error' } }, 500)
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.text()).toContain('古いCollection')
+    await click('更新')
+    expect(app.find('[role=alert]').exists()).toBe(true)
+    expect(app.text()).not.toContain('古いCollection')
+    expect(app.findAll('main section[aria-labelledby="home-title"] a[href^="/reports/"]')).toHaveLength(0)
+  })
+
+  test('empty Home shows a fixed empty Collection message', async () => {
+    const { app } = await start('/home', path => path === '/api/me' ? me() : response({ collections: [] }))
+    expect(app.text()).toContain('表示できるコレクションはありません')
+  })
+
+  test('a delayed old Home response cannot restore data after logout', async () => {
+    const oldHome = deferred<Response>()
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return oldHome.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('ログアウト')
+    expect(router.currentRoute.value.path).toBe('/login')
+    oldHome.resolve(response({ collections: [{ id, name: 'logout後の古いCollection', latest_report_id: otherId }] }))
+    await flushPromises()
+    expect(app.find('#password').exists()).toBe(true)
+    expect(app.text()).not.toContain('logout後の古いCollection')
+  })
+
+  test('a delayed Home response cannot replace the new response after route and identity recheck', async () => {
+    const firstHome = deferred<Response>()
+    let homeReads = 0
+    let identityReads = 0
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { identityReads++; return me() }
+      if (path === '/api/home') {
+        homeReads++
+        return homeReads === 1 ? firstHome.promise : response({ collections: [{ id: collectionID2, name: '新しいHome', latest_report_id: null }] })
+      }
+      if (path === '/api/reports') { return response({ reports: [], next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await router.push('/reports')
+    await flushPromises()
+    await router.push('/home')
+    await flushPromises()
+    expect(identityReads).toBeGreaterThanOrEqual(3)
+    expect(app.text()).toContain('新しいHome')
+    firstHome.resolve(response({ collections: [{ id, name: '古いHome', latest_report_id: otherId }] }))
+    await flushPromises()
+    expect(app.text()).toContain('新しいHome')
+    expect(app.text()).not.toContain('古いHome')
   })
 })
 

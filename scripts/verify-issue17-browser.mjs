@@ -276,6 +276,10 @@ try {
     const { verifyPages } = await import('./verify-report-pages-browser.mjs')
     issued.push(await verifyPages({ checkpoint: value => { phase = 'report-pages-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
   }
+  if (fixture.verify_home) {
+    const { verifyHome } = await import('./verify-home-browser.mjs')
+    issued.push(await verifyHome({ checkpoint: value => { phase = 'home-' + value }, evaluate, waitFor, navigate, reload, click, submit, token, fixture, stopDB, startDB }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))

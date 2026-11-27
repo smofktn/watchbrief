@@ -19,7 +19,7 @@ export const collectionJobsIDFromPath = (path: string): string | null => {
 }
 
 export const isProtectedPath = (path: string): boolean => {
-  return path === DEFAULT_PROTECTED_PATH || path === '/collections' || path === '/collections/new' || collectionIDFromPath(path) !== null || path === '/reports' || path === '/reports/daily' || path === '/reports/collections' || collectionJobsIDFromPath(path) !== null || reportIDFromPath(path) !== null
+  return path === DEFAULT_PROTECTED_PATH || path === '/home' || path === '/collections' || path === '/collections/new' || collectionIDFromPath(path) !== null || path === '/reports' || path === '/reports/daily' || path === '/reports/collections' || collectionJobsIDFromPath(path) !== null || reportIDFromPath(path) !== null
 }
 
 export const safeReturnPath = (candidate: string | null): string => {

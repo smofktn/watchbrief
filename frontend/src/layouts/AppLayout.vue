@@ -17,8 +17,8 @@ focusSession(session)
       <section v-else-if="state === 'authenticated'" aria-labelledby="current-user-title">
         <h2 id="current-user-title">本人情報</h2>
         <p>ログインID：<span>{{ currentLoginId }}</span></p>
-        <nav aria-label="確認する情報">
-          <RouterLink to="/me">本人情報</RouterLink>
+        <nav aria-label="主要な画面">
+          <RouterLink to="/home">ホーム</RouterLink>
           <span> / </span><RouterLink to="/collections">コレクション設定</RouterLink>
           <span> / </span><RouterLink to="/reports">保存済みReport</RouterLink>
         </nav>
