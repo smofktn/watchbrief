@@ -145,3 +145,9 @@ User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](..
 既存Vue/Go/SQL+sqlc、session/useResource、Markdown安全表示を再利用し、保護画面 `/home` と読み取りAPI `GET /api/home` を追加する。API応答は現在Collectionの `{id, name, latest_report_id}` のみに絞り、本文・snapshot・保存時Collection名をホーム用JSONへ複製しない。保存済み成功Reportは各Collection内で `scheduled_at DESC, report.id DESC` の先頭を使う。新runtime・依存・migration・権限・indexは追加しない。
 
 3つの主要ナビの本人情報リンク枠をホームへ接続する一方、`/me`、`/` のredirect、ログイン後の既定先は維持する。新 `/home` は認証済み保護URL allowlistへ追加し、深いURLのログイン復帰を試験する。当日状態・並べ替え・次回予定はこの範囲外である。
+
+## ホームの本日予定状態（Issue #94）
+
+既存Vue/Go/SQL+sqlc、認証session/useResource、`generation_jobs(user_id, scheduled_at, id)`索引、API SELECT権限を再利用する。時計はusecaseで差し替え可能にして、一度読んだ時刻からJST当日境界を作り、既存ホームqueryへUTC境界を渡す。1つのSQL snapshotで現在Collection、本日Job.statusの4件数、最新成功Report IDを読む。
+
+runtime、依存、テーブル、migration、index、権限は追加しない。件数0の欄省略は画面側の判断で、Job0件を失敗や未実行と解釈しない。詳細な応答と表示契約は[API](API仕様/get-api-home.md)・[ホーム](画面仕様/ホーム.md)を参照する。

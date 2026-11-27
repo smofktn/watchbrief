@@ -467,3 +467,11 @@ Report→Attempt→Jobの所有者条件を維持して31件まで取得する�
 現在Collectionを起点に `collections.user_id = session_user_id` で絞り、各CollectionへLATERAL相当の最新Report参照を左結合する1 SQL statementで取得する。最新Report側でも `generation_jobs.user_id = session_user_id` と `generation_jobs.collection_id = collections.id` の両条件を必須にし、成功済みJob/AttemptからReport IDだけを読む。並びは `collections.display_order, collections.id`、各Collection内の最新選択は `generation_jobs.scheduled_at DESC, reports.id DESC` とする。
 
 既存の `collections(user_id, display_order, id)`、`generation_jobs(collection_id, scheduled_at)` 一意索引、`generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引とAPI SELECT権限を使う。Report本文、summary、input_snapshot、Attempt情報はSELECT結果・JSONへ含めない。テーブル・論理関係・migration・権限・indexを追加しない。代表fixtureで機能と所属を確認し、大規模な全Collection履歴に対する性能保証は今回行わない。[API](API仕様/get-api-home.md)を参照する。
+
+## ホームの本日予定状態（Issue #94）
+
+既存 `generation_jobs(user_id, scheduled_at, id)` の所有者と半開時刻範囲を使い、同じSQL statement内でUserの本日JobをCollection ID別にstatus集計する。JoinはCollection IDで行い、Collection側の `user_id`、Job側の `user_id` と `collection_id` をすべて条件に含める。現在Collection起点の既存最新Report LATERAL参照と同じstatement snapshotから応答行を作る。
+
+アプリケーションが一度計算したJST日の開始・翌日開始をUTC `timestamptz` 境界として渡し、`scheduled_at >= start AND scheduled_at < end` を用いる。境界精度はPostgreSQLのmicrosecond値を保持する。件数はGenerationJob.statusのFILTER集計であり、Attempt/Reportを参照しない。対象JobがないCollectionもLEFT JOINと0埋めで行を保持し、件数合計0はFrontendで状態欄を省略する。
+
+既存テーブル、論理関係、migration、index、DB権限を変更しない。Report本文/snapshot/Attempt/失敗情報を集計応答に含めない。代表的な架空fixtureで境界・所属を確認するが、大規模履歴性能を保証しない。[API](API仕様/get-api-home.md)を参照する。

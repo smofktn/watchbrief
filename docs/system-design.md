@@ -970,3 +970,9 @@ Collection存在確認とJob取得は1つのSQL文のスナップショットで
 保護URL `/home` の画面は `GET /api/home` を呼び、セッション由来Userの現在Collectionと各Collectionの最新成功Report IDだけを読む。APIは現在Collectionを起点とする1 SQL statementで全行と最新Reportを同一snapshotから組み立て、CollectionとGenerationJobの両方に所有者条件を置く。Collectionは `display_order,id` 順、各CollectionのReportは既存Report一覧と同じ `scheduled_at DESC, report.id DESC` の先頭を選ぶ。現在Collection名とJobに保存された履歴名は混ぜず、Report詳細は既存の所有者認可付き経路へ委ねる。
 
 Frontendは既存session/useResourceの認証epoch、route離脱、logout、再試行時の消去と遅延応答破棄を使う。手動更新は先頭の状態を再取得し、空Collection・Reportなし・loading・固定エラーを区別する。画面とAPIは読み取り専用で、Job/Report生成、外部取得、cronからの過去Job復元、当日状態、並べ替え、次回予定の計算は追加しない。契約は[API](API仕様/get-api-home.md)と[画面](画面仕様/ホーム.md)。
+
+## ホームの本日予定状態（Issue #94）
+
+`GET /api/home` のusecaseは試験可能な時計から現在時刻を一度だけ取得し、その瞬間のJST日付とJST 00:00から翌日00:00までの半開区間を確定する。区間と日付は同じ応答内の全Collectionで共通とし、SQLへUTC時刻境界を渡す。ブラウザtimezoneやcronから日付・予定を計算しない。
+
+現在Collection、各Collectionの本日4状態件数、既存の最新成功Report IDを1 SQL statementで読む。CollectionとJobの所有者条件、JobのCollection条件を維持する。状態件数はGenerationJob.statusの集計で、Attempt/Reportの有無に依存させない。API/画面は既存session/useResourceの更新、401、epoch変更、logout、route離脱時の消去と遅延応答破棄を継続利用する。本文/snapshot/Attempt/失敗詳細は応答へ含めない。

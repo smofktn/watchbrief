@@ -178,3 +178,9 @@ Reportは生成時に組立て済みの完成本文を保持する読み取り�
 ホーム行は認証中Userの現在Collectionを表し、表示名・順序は現在のCollection設定から読む。削除済みCollectionは行に含めない。Reportへのリンク先は同じUser・同じCollectionに属する保存済み成功Reportのうち、`scheduled_at DESC, report.id DESC` で先頭のものとする。ホーム行の現在名とReport詳細のJob時点の履歴名は異なる責務として保持する。
 
 保存済みReportがないCollectionも現在設定として表示し、「まだレポートはありません」と案内する。ホームの読み取り・更新でJob/Attempt/ReportやCollection設定を作成・変更せず、現在ScheduleからJobを推定・復元しない。[正本](product-definition.md#ホームの最初の経路issue-92)を参照する。
+
+## ホームの本日予定状態（Issue #94）
+
+ホームの補助状態は、サーバーが一度確定したJST日付に含まれる保存済みGenerationJobのstatus件数である。対象区間はJST当日00:00以上、翌日00:00未満。Collectionごとにqueued/running/succeeded/failedを数え、対象Jobが0件なら状態欄を表示しない。0件から異常・未実行・Reportなしを推定しない。最新成功Reportへのリンクと「まだレポートはありません」は既存の独立した業務状態を表す。
+
+件数はJob.statusから直接集計し、AttemptやReportの存在を条件にしない。Jobは認証Userと現在Collectionの双方に属するものに限る。閲覧で状態遷移や履歴を変更せず、生成予定も復元しない。[正本](product-definition.md#ホームの本日予定状態issue-94)を参照する。
