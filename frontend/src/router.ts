@@ -9,6 +9,7 @@ import CollectionJobsPage from './pages/CollectionJobsPage.vue'
 import ReportsPage from './pages/ReportsPage.vue'
 import ReportDetailPage from './pages/ReportDetailPage.vue'
 import NotFoundPage from './pages/NotFoundPage.vue'
+import HomePage from './pages/HomePage.vue'
 export const createAppRouter = (history: RouterHistory = createWebHistory()) => createRouter({
   history,
   strict: true,
@@ -28,6 +29,7 @@ export const createAppRouter = (history: RouterHistory = createWebHistory()) => 
     { path: '/', component: MePage },
     { path: '/login', component: LoginPage },
     { path: '/me', component: MePage },
+    { path: '/home', component: HomePage },
     { path: '/collections', component: CollectionsPage },
     { path: '/collections/new', component: CollectionCreatePage },
     { path: '/collections/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: CollectionDetailPage },

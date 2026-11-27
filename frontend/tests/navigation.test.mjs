@@ -5,6 +5,9 @@ import { canonicalLoginPath, isProtectedPath, loginDestination, loginPathFor, sa
 test('only implemented protected paths can be a login destination', () => {
   assert.equal(isProtectedPath('/me'), true)
   assert.equal(safeReturnPath('/me'), '/me')
+  assert.equal(isProtectedPath('/home'), true)
+  assert.equal(safeReturnPath('/home'), '/home')
+  assert.equal(loginDestination('?return_to=%2Fhome'), '/home')
   for (const path of [null, '', '/', '/login', '/api/me', '/reports/unknown', '/missing']) {
     assert.equal(safeReturnPath(path), '/me')
   }

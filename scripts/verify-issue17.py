@@ -32,13 +32,14 @@ def main():
     daily = sys.argv[1:] == ['--daily-jobs']
     collection_jobs = sys.argv[1:] == ['--collection-jobs']
     pages = sys.argv[1:] == ['--report-pages']
+    home = sys.argv[1:] == ['--home']
     markdown = sys.argv[1:] == ['--report-markdown']
     schedules = sys.argv[1:] == ['--collection-schedules']
     sources = schedules or sys.argv[1:] == ['--collection-sources']
     targets = sources or sys.argv[1:] == ['--collection-targets']
     updating = targets or sys.argv[1:] == ['--collection-update']
     creation = updating or sys.argv[1:] == ['--collection-creation']
-    if sys.argv[1:] and not (creation or markdown or pages or daily or collection_jobs):
+    if sys.argv[1:] and not (creation or markdown or pages or daily or collection_jobs or home):
         raise SystemExit('Unknown verification mode.')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='watchbrief-issue17-') as directory:
@@ -288,11 +289,16 @@ def main():
                     page_checks = runpy.run_path(str(stage / 'scripts/verify-report-pages.py'))['verify'](request,sql,token,other_token)
                     tokens.extend(page_checks['tokens'])
                     page_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
+                home_checks = None
+                home_history = None
+                if home:
+                    home_checks = runpy.run_path(str(stage / 'scripts/verify-home.py'))['verify'](request,sql,token,other_token,logins[0])
+                    home_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
                 compose('stop', 'postgres')
                 for path, data in (('/api/login', {'login_id': logins[0], 'password': passwords[0]}),
-                                   ('/api/me', None), ('/api/collections', None), ('/api/reports', None), ('/api/generation-jobs', None),
+                                   ('/api/me', None), ('/api/collections', None), ('/api/reports', None), ('/api/generation-jobs', None), ('/api/home', None),
                                    ('/api/collections/' + ids[logins[0]]['collection'], None),
                                    ('/api/reports/' + ids[logins[0]]['report'], None), ('/api/logout', {})):
                     status, headers, body = request(path, token, data)
@@ -327,7 +333,7 @@ def main():
                 # Browser receives private generated fixtures through a mode-600 file.
                 fixture = stage / '.local/browser.json'
                 fixture.write_text(json.dumps(dict(login_id=logins[0], password=passwords[2], ids=ids[logins[0]],
-                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown, verify_pages=pages, verify_daily=daily, verify_collection_jobs=collection_jobs)))
+                                                   origin=origin, project=project, api_port=api_port, verify_creation=creation, verify_update=updating, verify_targets=targets, verify_sources=sources, verify_schedules=schedules, verify_markdown=markdown, verify_pages=pages, verify_daily=daily, verify_collection_jobs=collection_jobs, verify_home=home, home=home_checks)))
                 print(run([node_binary, str(ROOT / 'scripts/verify-issue17-browser.mjs'), str(fixture)], timeout=420 if updating else 300), end='', flush=True)
                 tokens.extend(json.loads(fixture.read_text())['browser_tokens'])
                 if daily:
@@ -339,6 +345,12 @@ def main():
                 if pages:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in page_history.items())
                     print('Report pages viewing preserved complete saved history: passed',flush=True)
+                if home:
+                    assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in home_history.items())
+                    print('Home viewing preserved complete saved history: passed',flush=True)
+                    home_token = login(password=passwords[2])
+                    runpy.run_path(str(stage / 'scripts/verify-home.py'))['verify_deleted_and_empty'](request,sql,home_token,other_token,logins[1],ids[logins[1]]['report'],home_checks)
+                    assert request('/api/logout', home_token, {})[0] == 204
                 if markdown:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in markdown_history.items())
                     print('Markdown viewing preserved all saved history and body/API values; old seed history unchanged: passed', flush=True)
@@ -352,6 +364,8 @@ def main():
                 assert {'login', 'current_user', 'collection_read', 'report_read', 'logout'} <= operations
                 if collection_jobs:
                     assert 'collection_generation_jobs_read' in operations
+                if home:
+                    assert 'home_read' in operations
                 hashes = sql("SELECT string_agg(password_hash,chr(10)) FROM app.users").splitlines()
                 hashes += [row['password_hash'] for row in json.loads(before)]
                 token_hashes = sql("SELECT string_agg(encode(token_hash,'hex'),chr(10)) FROM app.auth_sessions").splitlines()
@@ -372,6 +386,9 @@ def main():
                     forbidden += json.loads(sql("SELECT coalesce(json_agg(input_snapshot::text)::text,'[]') FROM app.generation_jobs"))
                 if pages:
                     forbidden += [value for value in page_checks['cursors'] if value]
+                if home:
+                    forbidden += [value for value in home_checks.values() if value]
+                    forbidden += ['現在のCollection名（架空）', '成功時の履歴名（架空）', '空の架空Collection']
                 for value in forbidden:
                     assert value and value not in log_text, 'Private log content'
                 for body in responses:

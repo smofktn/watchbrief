@@ -260,3 +260,13 @@ GET /api/reportsは認証を先に照合し、初回/続きとも31件までのS
 依存とChromiumの準備は[既存隔離検証手順](../docs/verification-issue-17.md)と同じです。共有ライブラリが必要な場合は `BROWSER_LIBRARY_PATH` に既存directoryを指定します。実動作確認済みと未確認の区別をIssue/PRへ記録します。
 
 契約は[Collection別Job API](../docs/API仕様/get-api-collection-generation-jobs.md)と[画面仕様](../docs/画面仕様/Collection別の予定・結果一覧.md)を参照してください。
+
+## ホームの最新保存済みReport（Issue #92）
+
+ルートの `make verify-home` は既存verify runnerの専用modeで、使い捨てCompose project・架空User/履歴・Chromiumを使います。通常DBの起動・停止・移行・初期化は行わず、終了時に通常DB状態不変と専用project/private状態の除去を確認します。
+
+JobとAttempt双方の成功条件、複数成功Reportの最新選択、さらに新しいqueued/running/failed Job、現在Collection名とReport履歴名、空Collection、所有者分離、認証復帰・Report詳細・更新・logout、保存履歴不変を検証します。Fixtureは生成処理を実行せず、履歴の読取確認を生成成功とは扱いません。Chromium補助ライブラリが必要なら既存directoryを `BROWSER_LIBRARY_PATH` に指定します。
+
+現在のDB整合性triggerはJob・Attempt・Reportの矛盾した成功/失敗組合せをcommitできないため、「Job=成功・Attempt=失敗・Reportあり」の不正行を使った分岐単独試験は行いません。保存可能な成功行と整合するfailed/running/queued行、成功Reportより新しい非成功Jobを試験し、この不正状態自体は未確認として扱います。
+
+契約は[ホームAPI](../docs/API仕様/get-api-home.md)、[ホーム画面](../docs/画面仕様/ホーム.md)、[保護URLとログイン復帰](../docs/画面仕様/保護URLとログイン復帰.md)を参照してください。
