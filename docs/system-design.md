@@ -963,4 +963,4 @@ HTTP→GenerationJobsユースケース→sqlc/pgxで認証後に所有者条件
 
 Collection存在確認とJob取得は1つのSQL文のスナップショットで行い、Collection削除との間に不整合な2段階読み取りを作らない。Job検索は `j.user_id` と `j.collection_id` の両方を必須条件にする。削除後の履歴はこのAPIから返さず、削除済みCollectionへのJOINを要求しない既存日付別APIに残す。ページ境界は既存のJob専用cursorとUTCマイクロ秒を再利用し、cursor自体は所有権・Collection選択を表さない。Collection条件は全ページのSQLへ必ず適用する。
 
-画面は既存 `useResource`/共有sessionでCollection候補取得とJob取得を直列化し、route/auth epoch/更新で全体を消去する。候補取得・履歴取得・追加取得はいずれも同じ遷移世代とAbortSignalに属し、切替前応答を採用しない。候補一覧と履歴APIは読み取り専用で、失敗時に設定・Job・Reportを修復/変更しない。具体契約は[API](API仕様/get-api-collection-generation-jobs.md)と[画面](画面仕様/Collection別の予定・結果一覧.md)。
+画面は既存 `useResource`/共有sessionでCollection候補取得とJob取得を直列化し、route外遷移/auth epoch/明示更新/失敗で候補と履歴を消去する。Collection route切替中に残せる候補は同じ認証epochで直前に確認した一覧だけとし、新候補応答を検証後すぐ置き換える。削除を示す404では当該IDを候補から除き、失効済みAbortSignalの応答は候補にも履歴にも反映しない。候補取得・履歴取得・追加取得はいずれも同じ遷移世代とAbortSignalに属し、切替前応答を採用しない。候補一覧と履歴APIは読み取り専用で、失敗時に設定・Job・Reportを修復/変更しない。具体契約は[API](API仕様/get-api-collection-generation-jobs.md)と[画面](画面仕様/Collection別の予定・結果一覧.md)。

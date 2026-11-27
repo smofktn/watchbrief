@@ -1384,6 +1384,14 @@ describe('Collection history route and selection', () => {
     { id: collectionID2, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:03.123456Z', status: 'succeeded', report_id: id },
     { id: '01ARZ3NDEKTSV4RRFFQ69G5FAY', collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:02.123456Z', status: 'failed', report_id: null },
   ]
+  const page = (start: number, count: number, date = '2026-11-27') => Array.from({ length: count }, (_, offset) => {
+    const index = start + offset
+    const seconds = start === 0 ? 59 - offset : start < 60 ? 29 - offset : 59 - offset
+    const day = start < 60 ? date : '2026-11-26'
+    const time = start < 60 ? `00:00:${String(seconds).padStart(2, '0')}` : `23:59:${String(seconds).padStart(2, '0')}`
+    return { ...jobs[0]!, id: '01ARZ3NDEKTSV4RRFFQ69G5F' + index.toString(16).toUpperCase().padStart(2, '0'), collection_name: `ページ${start}`, scheduled_at: `${day}T${time}.123456Z` }
+  })
+  const firstPage = { generation_jobs: page(0, 30), next_cursor: 'collection_cursor_A' }
 
   test('Report screen opens the selector without changing primary navigation', async () => {
     const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/reports' ? response({ reports: [], next_cursor: null }) : response({ collections }))
@@ -1432,7 +1440,34 @@ describe('Collection history route and selection', () => {
     candidates = []
     await click('更新')
     expect(app.text()).toContain('見つかりません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
     expect(fetch.mock.calls.filter(([path]) => path === `/api/collections/${collectionID2}/generation-jobs`)).toHaveLength(1)
+  })
+
+  test.each(['failed refresh', 'removed selection'])('clears stale options after %s', async outcome => {
+    let listReads = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') {
+        listReads++
+        return outcome === 'failed refresh' && listReads > 1
+          ? response({ error: { code: 'internal_error' } }, 500)
+          : response({ collections: outcome === 'removed selection' && listReads > 1 ? [] : collections })
+      }
+      return response({ generation_jobs: [jobs[0]], next_cursor: null })
+    })
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toContain('架空の設定')
+    await click('更新')
+    if (outcome === 'failed refresh') {
+      expect(app.find('[role=alert]').exists()).toBe(true)
+    } else {
+      expect(app.text()).toContain('見つかりません。')
+    }
+    const options = app.findAll('#collection-jobs-choice option')
+    expect(options.map(option => option.text())).not.toContain('架空の設定')
+    expect(options.map(option => option.text())).not.toContain('別の架空の設定')
+    expect(options.some(option => option.attributes('value') === id)).toBe(false)
+    expect(fetch.mock.calls.filter(([path]) => path === `/api/collections/${id}/generation-jobs`)).toHaveLength(1)
   })
 
   test('no Collection candidate never calls the history API', async () => {
@@ -1459,6 +1494,201 @@ describe('Collection history route and selection', () => {
     await flushPromises()
     expect(app.findAll('.collection-job')).toHaveLength(1)
     expect(app.text()).not.toContain('待機中')
+  })
+
+  test('a held Collection continuation cannot mix into the next Collection route', async () => {
+    const continuation = deferred<Response>()
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('/generation-jobs?cursor=collection_cursor_A')) { return continuation.promise }
+      return response({ generation_jobs: [{ ...jobs[1]!, collection_name: '次Collection専用履歴' }], next_cursor: null })
+    })
+    await click('もっと読む')
+    await router.push(`/reports/collections/${collectionID2}`)
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${collectionID2}`)
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('次Collection専用履歴')
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('次Collection専用履歴')
+    expect(app.text()).not.toContain('ページ30')
+  })
+
+  test('logout while a Collection continuation is pending cannot restore rows or candidate names', async () => {
+    const continuation = deferred<Response>()
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) { return continuation.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    await click('もっと読む')
+    await click('ログアウト')
+    expect(app.find('#password').exists()).toBe(true)
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.text()).not.toContain('架空の設定')
+    expect(app.text()).not.toContain('ページ30')
+  })
+
+  test('a delayed Collection candidate response cannot restore options after a route switch', async () => {
+    const oldCandidates = deferred<Response>()
+    const freshCandidates = deferred<Response>()
+    let listReads = 0
+    const { app, router, fetch } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return ++listReads === 1 ? oldCandidates.promise : freshCandidates.promise }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.find('#collection-jobs-choice').attributes('disabled')).toBeDefined()
+    await router.push(`/reports/collections/${id}`)
+    await flushPromises()
+    expect(listReads).toBe(2)
+    freshCandidates.resolve(response({ collections: [] }))
+    await flushPromises()
+    oldCandidates.resolve(response({ collections }))
+    await flushPromises()
+    expect(app.text()).toContain('見つかりません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
+    expect(fetch.mock.calls.map(([path]) => path).filter(path => path.includes('/generation-jobs'))).toEqual([])
+  })
+
+  test('a delayed Collection candidate response cannot restore options after logout', async () => {
+    const candidates = deferred<Response>()
+    const { app } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return candidates.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('ログアウト')
+    expect(app.find('#password').exists()).toBe(true)
+    candidates.resolve(response({ collections }))
+    await flushPromises()
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual([])
+    expect(app.text()).not.toContain('架空の設定')
+    expect(app.text()).not.toContain('別の架空の設定')
+  })
+
+  test('a failed selected-history refresh clears newly verified candidate options', async () => {
+    let historyReads = 0
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) {
+        historyReads++
+        return historyReads === 1
+          ? response({ generation_jobs: [jobs[0]], next_cursor: null })
+          : response({ error: { code: 'internal_error' } }, 500)
+      }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toContain('架空の設定')
+    await click('更新')
+    expect(app.find('[role=alert]').exists()).toBe(true)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
+  })
+
+  test('a timed out Collection continuation retains rows and retries the same cursor once', async () => {
+    let attempts = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) {
+        attempts++
+        if (attempts === 1) {
+          return new Promise((_resolve, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+        }
+        return response({ generation_jobs: page(30, 5), next_cursor: null })
+      }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).length).toBe(1)
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).map(([path]) => path)).toEqual([
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+    ])
+  })
+
+  test('Collection continuation rejects reverse ordering and a cursor cycle across pages', async () => {
+    let attempts = 0
+    const second = page(30, 30)
+    const third = page(60, 30)
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.endsWith('cursor=collection_cursor_A')) {
+        attempts++
+        return response(attempts === 1
+          ? { generation_jobs: [...second].reverse(), next_cursor: null }
+          : { generation_jobs: second, next_cursor: 'collection_cursor_B' })
+      }
+      if (path.endsWith('cursor=collection_cursor_B')) { return response({ generation_jobs: third, next_cursor: 'collection_cursor_A' }) }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(60)
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+  })
+
+  test('a delayed continuation cannot restore old rows or options across an identity recheck', async () => {
+    const continuation = deferred<Response>()
+    const refreshedCandidates = deferred<Response>()
+    const refreshedCandidatesMe = deferred<Response>()
+    let meReads = 0
+    let collectionReads = 0
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return ++meReads === 1 ? me() : refreshedCandidatesMe.promise }
+      if (path === '/api/collections') { return ++collectionReads === 1 ? response({ collections }) : refreshedCandidates.promise }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) { return continuation.promise }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await click('もっと読む')
+    await router.push('/reports/collections')
+    await flushPromises()
+    expect(meReads).toBe(2)
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    refreshedCandidatesMe.resolve(me())
+    await flushPromises()
+    expect(collectionReads).toBe(2)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual(['選択してください'])
+    refreshedCandidates.resolve(response({ collections: [] }))
+    await flushPromises()
+    expect(app.text()).toContain('表示できるCollectionはありません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual(['選択してください'])
   })
 
   test('refresh rechecks candidates and reads a changed status from the first page', async () => {

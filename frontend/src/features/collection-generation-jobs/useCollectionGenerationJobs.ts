@@ -4,14 +4,21 @@ import { useResource } from '../../composables/useResource'
 import { errorCode, jsonBody, request } from '../../api'
 import { useSession } from '../auth/session'
 import { collectionJobsIDFromPath } from '../../navigation'
+import type { CollectionSummary } from '../collections/data'
 import { decodeCollectionJobs, fetchCollectionJobResource } from './api'
 import { decodeJobs } from '../generation-jobs/api'
 import { jobPrecedes, type GenerationJob } from '../generation-jobs/data'
 
 export const useCollectionGenerationJobs = () => {
-  const resource = useResource(fetchCollectionJobResource, decodeCollectionJobs)
   const session = useSession()
   const route = useRoute()
+  const knownCollections = shallowRef<CollectionSummary[]>([])
+  const loadCollectionResource = (path: string, signal: AbortSignal) => fetchCollectionJobResource(
+    path,
+    signal,
+    collections => { if (!signal.aborted) { knownCollections.value = collections.map(collection => ({ ...collection })) } },
+  )
+  const resource = useResource(loadCollectionResource, decodeCollectionJobs)
   const extra = shallowRef<GenerationJob[]>([])
   const nextCursor = ref<string | null>(null)
   const moreBusy = ref(false)
@@ -31,7 +38,18 @@ export const useCollectionGenerationJobs = () => {
     moreMessage.value = ''
   }
   watch(resource.data, clearMore, { immediate: true, flush: 'sync' })
+  watch(resource.state, state => {
+    if (state === 'error') { knownCollections.value = [] }
+  }, { flush: 'sync' })
+  watch([session.state, session.epoch], () => { knownCollections.value = [] }, { flush: 'sync' })
+  watch(() => route.path, path => {
+    if (path !== '/reports/collections' && !collectionJobsIDFromPath(path)) { knownCollections.value = [] }
+  }, { flush: 'sync' })
   const data = computed(() => resource.data.value ? { ...resource.data.value, items: [...resource.data.value.items, ...extra.value], nextCursor: nextCursor.value } : null)
+  const refresh = () => {
+    knownCollections.value = []
+    return resource.load()
+  }
   const loadMore = async () => {
     const id = collectionJobsIDFromPath(route.path)
     if (moreBusy.value || resource.state.value !== 'ready' || !id || session.state.value !== 'authenticated' || !nextCursor.value || !data.value?.selected) { return }
@@ -68,5 +86,5 @@ export const useCollectionGenerationJobs = () => {
     }
   }
   onScopeDispose(clearMore)
-  return { ...resource, data, nextCursor: readonly(nextCursor), moreBusy: readonly(moreBusy), moreMessage: readonly(moreMessage), loadMore }
+  return { ...resource, data, knownCollections: readonly(knownCollections), refresh, nextCursor: readonly(nextCursor), moreBusy: readonly(moreBusy), moreMessage: readonly(moreMessage), loadMore }
 }
