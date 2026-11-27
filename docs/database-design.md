@@ -461,3 +461,9 @@ Report→Attempt→Jobの所有者条件を維持して31件まで取得する�
 既存の `generation_jobs(collection_id, scheduled_at)` 一意索引と `generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引・API SELECT権限を使う。1 SQL文で、本人所有の現在Collectionを確認し、その同一スナップショットから `j.user_id` と `j.collection_id` の両条件でJobを検索する。Jobを起点にAttempt/ReportをLEFT JOINし、queuedを含む。Collectionが存在しない/所有者が違う/削除済みの場合は結果に404判定を返し、有効なCollectionにJobがない場合は200空配列とする。
 
 予定時刻・Job IDの降順、既存Job cursorの厳密なtuple境界、31件取得・30件返却を使う。cursorに含まれるCollectionを信頼せず、初回・各続き取得で所有者と選択Collection条件を再適用する。テーブル、論理関係、migration、権限の追加は行わない。既存索引を利用するクエリであり、新indexは要求しない。代表的な小規模fixtureで機能を検証するが、大規模履歴性能と全ページsnapshotは保証しない。[API](API仕様/get-api-collection-generation-jobs.md)を参照する。
+
+## ホームの最新保存済みReport（Issue #92）
+
+現在Collectionを起点に `collections.user_id = session_user_id` で絞り、各CollectionへLATERAL相当の最新Report参照を左結合する1 SQL statementで取得する。最新Report側でも `generation_jobs.user_id = session_user_id` と `generation_jobs.collection_id = collections.id` の両条件を必須にし、成功済みJob/AttemptからReport IDだけを読む。並びは `collections.display_order, collections.id`、各Collection内の最新選択は `generation_jobs.scheduled_at DESC, reports.id DESC` とする。
+
+既存の `collections(user_id, display_order, id)`、`generation_jobs(collection_id, scheduled_at)` 一意索引、`generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引とAPI SELECT権限を使う。Report本文、summary、input_snapshot、Attempt情報はSELECT結果・JSONへ含めない。テーブル・論理関係・migration・権限・indexを追加しない。代表fixtureで機能と所属を確認し、大規模な全Collection履歴に対する性能保証は今回行わない。[API](API仕様/get-api-home.md)を参照する。

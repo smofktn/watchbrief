@@ -964,3 +964,9 @@ HTTP→GenerationJobsユースケース→sqlc/pgxで認証後に所有者条件
 Collection存在確認とJob取得は1つのSQL文のスナップショットで行い、Collection削除との間に不整合な2段階読み取りを作らない。Job検索は `j.user_id` と `j.collection_id` の両方を必須条件にする。削除後の履歴はこのAPIから返さず、削除済みCollectionへのJOINを要求しない既存日付別APIに残す。ページ境界は既存のJob専用cursorとUTCマイクロ秒を再利用し、cursor自体は所有権・Collection選択を表さない。Collection条件は全ページのSQLへ必ず適用する。
 
 画面は既存 `useResource`/共有sessionでCollection候補取得とJob取得を直列化し、route外遷移/auth epoch/明示更新/失敗で候補と履歴を消去する。Collection route切替中に残せる候補は同じ認証epochで直前に確認した一覧だけとし、新候補応答を検証後すぐ置き換える。削除を示す404では当該IDを候補から除き、失効済みAbortSignalの応答は候補にも履歴にも反映しない。候補取得・履歴取得・追加取得はいずれも同じ遷移世代とAbortSignalに属し、切替前応答を採用しない。候補一覧と履歴APIは読み取り専用で、失敗時に設定・Job・Reportを修復/変更しない。具体契約は[API](API仕様/get-api-collection-generation-jobs.md)と[画面](画面仕様/Collection別の予定・結果一覧.md)。
+
+## ホームの最新保存済みReport（Issue #92）
+
+保護URL `/home` の画面は `GET /api/home` を呼び、セッション由来Userの現在Collectionと各Collectionの最新成功Report IDだけを読む。APIは現在Collectionを起点とする1 SQL statementで全行と最新Reportを同一snapshotから組み立て、CollectionとGenerationJobの両方に所有者条件を置く。Collectionは `display_order,id` 順、各CollectionのReportは既存Report一覧と同じ `scheduled_at DESC, report.id DESC` の先頭を選ぶ。現在Collection名とJobに保存された履歴名は混ぜず、Report詳細は既存の所有者認可付き経路へ委ねる。
+
+Frontendは既存session/useResourceの認証epoch、route離脱、logout、再試行時の消去と遅延応答破棄を使う。手動更新は先頭の状態を再取得し、空Collection・Reportなし・loading・固定エラーを区別する。画面とAPIは読み取り専用で、Job/Report生成、外部取得、cronからの過去Job復元、当日状態、並べ替え、次回予定の計算は追加しない。契約は[API](API仕様/get-api-home.md)と[画面](画面仕様/ホーム.md)。

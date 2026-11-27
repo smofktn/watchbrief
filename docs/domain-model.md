@@ -172,3 +172,9 @@ Reportは生成時に組立て済みの完成本文を保持する読み取り�
 現在のCollectionを選ぶ機能は保存済みJobの読み取り範囲を絞るだけで、Jobの状態遷移・所有者・Reportの業務関係を変えない。選択できるのは認証中Userが現在所有するCollectionだけ。Job側の `user_id` と `collection_id` を同時に照合し、所有者と選択先の双方を限定する。削除済みCollectionは現在設定として選択できないが、Job.user_idから認可する既存の日付別履歴では閲覧できる。
 
 有効なCollectionにJobがない場合は空配列を返し、「まだレポートはありません」と表示する。存在しない・他者所有・削除済みCollectionの違いは利用者へ明かさず404とする。ページ移動・手動更新・Collection切替は読み取りだけで、保存済み履歴の状態や順序を変更しない。[正本](product-definition.md#collection別の保存済み予定結果一覧issue-90)を参照する。
+
+## ホームの最新保存済みReport（Issue #92）
+
+ホーム行は認証中Userの現在Collectionを表し、表示名・順序は現在のCollection設定から読む。削除済みCollectionは行に含めない。Reportへのリンク先は同じUser・同じCollectionに属する保存済み成功Reportのうち、`scheduled_at DESC, report.id DESC` で先頭のものとする。ホーム行の現在名とReport詳細のJob時点の履歴名は異なる責務として保持する。
+
+保存済みReportがないCollectionも現在設定として表示し、「まだレポートはありません」と案内する。ホームの読み取り・更新でJob/Attempt/ReportやCollection設定を作成・変更せず、現在ScheduleからJobを推定・復元しない。[正本](product-definition.md#ホームの最初の経路issue-92)を参照する。

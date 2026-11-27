@@ -205,3 +205,9 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 既存のCollection別履歴仕様を `/reports/collections` の選択と `/reports/collections/{ULID}` の履歴閲覧へつなぐ。本人の現在Collectionだけを選び、選択Collectionの保存済みJobを30件ずつ新しい順に取得する。成功だけ既存詳細へ移動する。API/画面/認可/cursor/削除競合の具体契約は[API](API仕様/get-api-collection-generation-jobs.md)・[画面](画面仕様/Collection別の予定・結果一覧.md)・関連設計を参照する。
 
 親#18へ設計commitを反映した後、そのcommitを起点に子#90を作り、PR baseを#18とする。Collection候補→履歴→成功詳細→戻る/再読込→logoutを最小正常系として、隔離DB/架空データ/Chromiumで境界・認可・削除・切替競合・失敗保持を検証する。home、生成・外部取得、Collection編集/有効化/削除/並べ替えは範囲外。窓口が独立レビュー・親への統合を行い、実装担当はmerge・Issue状態変更を行わない。親#18全体は未完了。
+
+## ホームの最新保存済みReport（Issue #92）
+
+親#18の設計commitを反映後、そのcommitから子#92を作り、PR baseを#18とする。ホームに本人の現在Collectionを既存順で表示し、最新保存済み成功Reportがある場合だけ既存詳細へリンクする。ホームからReport詳細→再読込/手動更新→logoutを最小正常系とし、所有者・空/未生成・最新選択・改名/削除・失敗復旧・認証/遅延破棄を隔離環境で検証する。
+
+当日予定状態・並べ替え・Collection削除/有効化は後続の親#18小作業、次回予定は#34。生成/外部アクセス/過去Job復元は行わない。窓口が独立レビューと親統合を担当し、実装担当はmerge・Issue状態変更をしない。親#18全体は未完了。契約は[API](API仕様/get-api-home.md)・[画面](画面仕様/ホーム.md)と関連設計を参照する。

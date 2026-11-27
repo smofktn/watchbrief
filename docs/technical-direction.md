@@ -139,3 +139,9 @@ User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](..
 共通化は既存Job cursor・認証・UI資源管理に限る。#88の日付グループ/全Job読み取りを無理にCollection featureへ統合しない。cursorはCollectionスコープや認可を表さず、切替時には破棄し、SQLは各ページでCollection条件を固定する。
 
 選択URLのroute切替中だけは、同じ認証epochで直前の候補GETが確認したCollection候補をメモリ保持し、次の候補GETが検証済みになった時点で置き換える。明示更新、取得失敗、route外遷移、logout/identity recheckで直ちに消し、abort後の古い応答を候補へ反映しない。候補はUI選択肢の表示専用で、履歴APIの認可を代替しない。画面状態の境界は[Collection別画面仕様](画面仕様/Collection別の予定・結果一覧.md#urlと認証)を参照する。
+
+## ホームの最新Report表示（Issue #92）
+
+既存Vue/Go/SQL+sqlc、session/useResource、Markdown安全表示を再利用し、保護画面 `/home` と読み取りAPI `GET /api/home` を追加する。API応答は現在Collectionの `{id, name, latest_report_id}` のみに絞り、本文・snapshot・保存時Collection名をホーム用JSONへ複製しない。保存済み成功Reportは各Collection内で `scheduled_at DESC, report.id DESC` の先頭を使う。新runtime・依存・migration・権限・indexは追加しない。
+
+3つの主要ナビの本人情報リンク枠をホームへ接続する一方、`/me`、`/` のredirect、ログイン後の既定先は維持する。新 `/home` は認証済み保護URL allowlistへ追加し、深いURLのログイン復帰を試験する。当日状態・並べ替え・次回予定はこの範囲外である。
