@@ -1,6 +1,6 @@
 # 保存済みReportの取得
 
-Issue #57の委任に基づく最小読み取り専用画面。`/reports` に本人のReportへのリンクを置き、`/reports/{ULID}` にJob時点のCollection名、更新確認期間、生成完了日時、保存済み本文を表示する。保存済み成功Report一覧は30件ずつ追加取得する。日付別/Collection別の本格一覧や編集は #18へ残す。保存本文の安全なMarkdown表示は後段の現行契約に従う。
+Issue #57の委任に基づく最小読み取り専用画面。`/reports` に本人のReportへのリンクを置き、`/reports/{ULID}` にJob時点のCollection名、更新確認期間、生成完了日時、保存済み本文を表示する。保存済み成功Report一覧は30件ずつ追加取得する。日付別は[予定・結果一覧](日付別の予定・結果一覧.md)へ接続し、Collection別の本格一覧や編集は #18へ残す。保存本文の安全なMarkdown表示は後段の現行契約に従う。
 
 本人情報・設定のナビゲーションから開ける。保護URLのallowlistへ正規ULIDの詳細と一覧を追加する。未認証で詳細を開くと `/login?return_to=...` へ移り、認証成功後に同じReportを取得する。戻り先は実装済みの内部パスのみ許可し、外部URL・query/fragment・不正IDは許可しない。
 

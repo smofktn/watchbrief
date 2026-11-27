@@ -1080,7 +1080,7 @@ describe('Report cursor continuation', () => {
   const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
   const first = { reports: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
   const last = { reports: rows.slice(30), next_cursor: null }
-  const count = () => wrapper!.findAll('a[href^="/reports/"]').length
+  const count = () => wrapper!.findAll('a[href^="/reports/"]').filter(a => a.attributes('href') !== '/reports/daily').length
   test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
     const { app, router, fetch } = await start('/reports', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/reports' ? response(first) : response({ ...report, id: rows[0].id }))
     expect(count()).toBe(30)
@@ -1190,5 +1190,187 @@ describe('Report cursor continuation', () => {
     await click('もっと読む')
     expect(count()).toBe(35)
     expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A', '/api/reports?cursor=opaque_cursor_A'])
+  })
+})
+
+describe('daily Job cursor continuation', () => {
+  // Distinct PG microseconds inside one millisecond, with the opposite ID order.
+  const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, status: 'succeeded', report_id: id, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
+  const first = { generation_jobs: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
+  const last = { generation_jobs: rows.slice(30), next_cursor: null }
+  const count = () => wrapper!.findAll('.daily-job').length
+  test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
+    const { app, router, fetch } = await start('/reports/daily', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/generation-jobs' ? response(first) : response({ ...report, status: 'succeeded', report_id: id, id: rows[0].id }))
+    expect(count()).toBe(30)
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(app.text()).toContain('すべての保存済み予定・結果を表示しました')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/generation-jobs?cursor=opaque_cursor_A')
+    await router.push('/reports/'+rows[0].id)
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(true)
+    await router.push('/reports/daily')
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.find('.report-body').exists()).toBe(false)
+  })
+  test.each([
+    response({}, 500), response({}), response({ generation_jobs: [rows[0]], next_cursor: null }),
+    response({ generation_jobs: [...last.generation_jobs].reverse(), next_cursor: null }),
+    response({ generation_jobs: last.generation_jobs, next_cursor: 'unexpected_cursor' }),
+    response({ generation_jobs: last.generation_jobs }),
+    response({ generation_jobs: first.generation_jobs, next_cursor: first.next_cursor }),
+  ])('failed/malformed/overlapping/reversed continuation keeps old items and cursor for retry', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? bad : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A', '/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+  const older = (day: string, start: number) => Array.from({ length: 30 }, (_, i) => ({ ...report, status: 'succeeded', report_id: id, id: String(start+i).padStart(26, '0'), collection_name: '追加ページ'+(start+i), scheduled_at: day+'T00:00:00.'+String(999999-i).padStart(6, '0')+'Z' }))
+  test.each([
+    { generation_jobs: [rows[30], rows[30]], next_cursor: null },
+    { generation_jobs: [{ ...rows[0], id: '00000000000000000000000999' }], next_cursor: null },
+    { generation_jobs: older('2026-03-31',100), next_cursor: first.next_cursor },
+  ])('loadMore rejects duplicate IDs, new-ID cross-page reversal and repeated cursor without consuming the boundary', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? response(bad) : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A','/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+  test('loadMore rejects an older page whose next cursor cycles to a previously consumed cursor, then retries B', async () => {
+    const second = { generation_jobs: older('2026-03-31',100), next_cursor: 'opaque_cursor_B' }
+    const third = older('2026-03-30',200)
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : !path.includes('?') ? response(first) : response(++attempts === 1 ? second : attempts === 2 ? { generation_jobs: third, next_cursor: 'opaque_cursor_A' } : { generation_jobs: third, next_cursor: null }))
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(90)
+    expect(app.text()).toContain('すべての保存済み予定・結果を表示しました')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A','/api/generation-jobs?cursor=opaque_cursor_B','/api/generation-jobs?cursor=opaque_cursor_B'])
+  })
+  test('double operation starts one continuation, with an unchanged opaque cursor', async () => {
+    const pending = deferred<Response>()
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?'))).toHaveLength(1)
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('続きを読み込んでいます')
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(35)
+  })
+  test('continuation 401 clears all rows/cursor and returns to /reports after login', async () => {
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(0)
+    expect(app.text()).not.toContain('架空ページ')
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports%2Fdaily')
+    expect(app.findAll('button').some(button => button.text() === 'もっと読む')).toBe(false)
+  })
+  test.each(['route', 'logout', 'identity'])('late continuation after %s does not resurrect rows or cursor', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    if (action === 'route') { await router.push('/me') }
+    else if (action === 'logout') { await click('ログアウト') }
+    else { window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })) }
+    await flushPromises()
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(action === 'identity' ? 30 : 0)
+    expect(app.text()).not.toContain('架空ページ34')
+  })
+  test('timeout keeps already shown rows and retries the same cursor', async () => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (!path.includes('?')) { return response(first) }
+      if (++attempts > 1) { return response(last) }
+      return new Promise<Response>((_, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await vi.advanceTimersByTimeAsync(15001)
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A', '/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+})
+
+describe('daily Job display and refresh', () => {
+  const statuses = ['queued', 'running', 'succeeded', 'failed'] as const
+  const rows = statuses.map((status, i) => ({ id: String(4-i).padStart(26,'0'), collection_name: '予定'+status, scheduled_at: i < 2 ? '2026-04-01T15:00:00Z' : '2026-04-01T14:59:59Z', status, report_id: status === 'succeeded' ? id : null }))
+  test('four Japanese states, only success linked and JST dates cross UTC midnight correctly', async () => {
+    const { app } = await start('/reports/daily', path => path === '/api/me' ? me() : response({ generation_jobs: rows, next_cursor: null }))
+    expect(app.findAll('.daily-job')).toHaveLength(4)
+    expect(app.findAll('.daily-job a')).toHaveLength(1)
+    expect(app.get('.daily-job a').attributes('href')).toBe('/reports/'+id)
+    expect(app.findAll('.job-day h3').map(x => x.text())).toEqual(['2026/04/02','2026/04/01'])
+    expect(app.findAll('time').map(x => x.text())).toEqual(['00:00:00','00:00:00','23:59:59','23:59:59'])
+    expect(app.findAll('.job-status').map(x => x.text())).toEqual(['待機中','実行中','成功','失敗'])
+  })
+  test('refresh clears continuation, reads current state from first page and discards old continuation', async () => {
+    const pending = deferred<Response>()
+    const firstRows = Array.from({ length: 30 }, (_,i) => ({ ...rows[0], id: String(100-i).padStart(26,'0') }))
+    let reads = 0
+    const { app } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(++reads === 1 ? { generation_jobs: firstRows, next_cursor: 'opaque' } : { generation_jobs: [{ ...rows[0], status: 'running' }], next_cursor: null }))
+    await click('もっと読む')
+    await click('更新')
+    pending.resolve(response({ generation_jobs: [rows[3]], next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.daily-job')).toHaveLength(1)
+    expect(app.get('.job-status').text()).toBe('実行中')
+    expect(app.text()).not.toContain('予定failed')
+  })
+  test('deep daily URL survives login, empty and malformed first page retry', async () => {
+    let authenticated = false
+    let reads = 0
+    const { app, router } = await start('/reports/daily', path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null,204) }
+      return response(++reads === 1 ? {} : { generation_jobs: [], next_cursor: null })
+    })
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports%2Fdaily')
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe('/reports/daily')
+    expect(app.find('[role="alert"]').exists()).toBe(true)
+    await click('予定・結果を再試行')
+    expect(app.text()).toContain('保存済みの予定・結果はありません。')
+  })
+})
+
+describe('daily route integration', () => {
+  test('existing Report screen opens daily view without adding a primary navigation', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/reports' ? response({ reports: [], next_cursor: null }) : response({ generation_jobs: [], next_cursor: null }))
+    expect(app.findAll('nav a')).toHaveLength(3)
+    await app.get('a[href="/reports/daily"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/reports/daily')
+    expect(app.text()).toContain('保存済みの予定・結果はありません。')
+    expect(app.findAll('nav a')).toHaveLength(3)
+  })
+  test.each(['route', 'logout'])('late first Job response after %s cannot restore data', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null,204) : pending.promise)
+    if (action === 'route') { await router.push('/me') } else { await click('ログアウト') }
+    await flushPromises()
+    pending.resolve(response({ generation_jobs:[{ id, collection_name:'遅延した非公開予定', scheduled_at:'2026-04-01T00:00:00Z',status:'queued',report_id:null }], next_cursor:null }))
+    await flushPromises()
+    expect(app.findAll('.daily-job')).toHaveLength(0)
+    expect(app.text()).not.toContain('遅延した非公開予定')
   })
 })

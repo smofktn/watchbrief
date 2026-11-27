@@ -67,6 +67,7 @@ func run(logger *slog.Logger) error {
 		return errors.New("invalid_origin_configuration")
 	}
 	handler = httpapi.WithReports(handler, usecase.Reports{Store: postgres.NewUserStore(pool)}, logger)
+	handler = httpapi.WithGenerationJobs(handler, usecase.GenerationJobs{Store: postgres.NewUserStore(pool)}, logger)
 	addr := os.Getenv("API_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8080"
