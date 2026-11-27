@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/smofktn/watchbrief/backend/internal/adapter/postgres/generated"
 	"github.com/smofktn/watchbrief/backend/internal/domain"
 )
@@ -15,7 +16,18 @@ func (s *UserStore) ListOwnedReports(ctx context.Context, userID string) ([]doma
 	}
 	values := make([]domain.ReportSummary, 0, len(rows))
 	for _, row := range rows {
-		values = append(values, domain.ReportSummary{ID: row.ID, CollectionName: row.CollectionName, ScheduledAt: row.ScheduledAt.Time, GeneratedAt: row.GeneratedAt.Time})
+		values = append(values, domain.ReportSummary{ID: row.ID, CollectionName: row.CollectionName, ScheduledAt: row.ScheduledAt.Time.UTC(), GeneratedAt: row.GeneratedAt.Time.UTC()})
+	}
+	return values, nil
+}
+func (s *UserStore) ListOwnedReportsBefore(ctx context.Context, userID string, cursor domain.ReportCursor) ([]domain.ReportSummary, error) {
+	rows, err := s.queries.ListOwnedReportsBefore(ctx, generated.ListOwnedReportsBeforeParams{UserID: userID, BeforeAt: pgtype.Timestamptz{Time: cursor.ScheduledAt, Valid: true}, BeforeID: cursor.ID})
+	if err != nil {
+		return nil, domain.ErrReportStore
+	}
+	values := make([]domain.ReportSummary, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, domain.ReportSummary{ID: row.ID, CollectionName: row.CollectionName, ScheduledAt: row.ScheduledAt.Time.UTC(), GeneratedAt: row.GeneratedAt.Time.UTC()})
 	}
 	return values, nil
 }

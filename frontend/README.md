@@ -135,3 +135,11 @@ markdown-it 15.0.3（MIT）とDOMPurify 3.5.0（Apache-2.0選択）をexact pin�
 架空データを追加する手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。既存の架空UserとDB準備が必要で、別namespaceへ原子的追加する。既存v3履歴は変更せず、再投入時の差異を拒否する。seedは生成成功の実証ではない。通常DBへの実行は今回の作業では行わず、使い捨てrunner内だけで検証する。
 
 実施結果・監査結果・未確認のブラウザ/配備等はIssue/PRへ記録する。API/DB/schema/生成処理は不変、migration不要。本格一覧/home・Collection有効化・#19/#20/#21は対象外。
+
+## Report一覧の追加取得（Issue #86）
+
+`useReports.ts` は既存useResourceによる初回取得/消去を共有し、Report専用の追加項目/next cursor/実行中/エラーだけを保持する。共通useResourceは変更しない。初回は30件まで、「もっと読む」で続きを取得し、失敗/timeout/不正payloadでは既存項目と同じcursorを保持する。二重取得を抑止し、認証/route/初回データ置換・logoutで続きの状態も破棄する。401は正しい `/reports` へログイン復帰する。詳細のMarkdown表示は維持する。
+
+cursorはサーバー値のまま再送し、解読/再生成/URL・storage永続化しない。順序検査はUTC小数部6桁の文字列とULIDで行い、JSミリ秒へ丸めない。重複/逆順/境界重複・繰返しcursor等は全ページを追加せず、再試行できる。日時のDate利用は暦の妥当性だけで順序比較には使わない。全ページsnapshotではなく、新しい先頭は再読込で確認する。[API](../docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)・[画面](../docs/画面仕様/保存済みReportの取得.md#保存済み成功report一覧の追加取得)を参照。
+
+単体/実Routerは `make frontend-test`、使い捨てDB/Chromiumはルート `make verify-report-pages`。0/30/31/35・同一秒マイクロ差とID逆順・同日時、追加取得失敗/timeout/重複・不正payload・二重操作、認証失効/離脱/遅い応答を確認する。npm ci --ignore-scripts・既存runtime/依存/lockは維持し、追加依存はない。

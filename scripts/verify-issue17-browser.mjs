@@ -187,16 +187,17 @@ try {
   startDB()
   await click('設定を再試行')
   await waitFor("document.querySelector('main').textContent.includes('架空コレクション')")
+  const savedReportName = fixture.verify_pages ? '追加取得用（架空）' : '保存Report確認用（架空）'
   phase = 'report-outage'
   await evaluate("window.pauseNextMe=true;document.querySelector('nav a[href=\"/reports\"]').click()")
   await waitFor("typeof window.releaseMe === 'function'")
   stopDB()
   await evaluate("window.releaseMe();window.releaseMe=undefined")
   await waitFor(hasButton('Reportを再試行'))
-  assert(!(await evaluate("document.querySelector('main').textContent.includes('保存Report確認用（架空）')")))
+  assert(!(await evaluate(`document.querySelector('main').textContent.includes(${JSON.stringify(savedReportName)})`)))
   startDB()
   await click('Reportを再試行')
-  await waitFor("document.querySelector('main').textContent.includes('保存Report確認用（架空）')")
+  await waitFor(`document.querySelector('main').textContent.includes(${JSON.stringify(savedReportName)})`)
   phase = 'me-outage'
   stopDB()
   await reload()
@@ -254,12 +255,16 @@ try {
     const { verifyMarkdown } = await import('./verify-report-markdown-browser.mjs')
     issued.push(await verifyMarkdown({ checkpoint: value => { phase = 'report-markdown-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, token, networkRequests, externalRequests }))
   }
+  if (fixture.verify_pages) {
+    const { verifyPages } = await import('./verify-report-pages-browser.mjs')
+    issued.push(await verifyPages({ checkpoint: value => { phase = 'report-pages-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
   console.log('Browser: protected Report return, safe fallback, own settings/safe Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown|report-pages)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)

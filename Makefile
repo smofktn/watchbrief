@@ -6,7 +6,7 @@ export WATCHBRIEF_DEV_MAKE := $(MAKE)
 
 FRONTEND_COMMANDS := frontend-install frontend-dev frontend-build frontend-typecheck frontend-preview frontend-audit frontend-test frontend-coverage frontend-test-legacy
 BACKEND_COMMANDS := backend-deps backend-dev backend-build backend-fmt backend-test backend-coverage backend-test-db backend-benchmark-password backend-check-input
-BACKEND_DIRECT := verify-report-markdown seed-markdown-reports verify-collection-schedules verify-collection-sources verify-collection-targets verify-collection-update verify-collection-creation verify-issue17 password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+BACKEND_DIRECT := verify-report-pages seed-report-pages verify-report-markdown seed-markdown-reports verify-collection-schedules verify-collection-sources verify-collection-targets verify-collection-update verify-collection-creation verify-issue17 password-reset verify-password-reset db-provision-password-resetter user-create verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 .PHONY: help dev verify-dev runtime-install runtime-versions build test check coverage $(FRONTEND_COMMANDS) $(BACKEND_COMMANDS) $(BACKEND_DIRECT)
 
@@ -19,6 +19,8 @@ help:
 	  '  make frontend-install              Frontend依存を導入' \
 	  '  make backend-deps                  Go依存を取得' \
 	  '  make build / test / check           両方のビルド / 両方の試験 / 試験と型検査' \
+	  '  make verify-report-pages          使い捨てDB/ChromiumでReportの追加取得を検証' \
+	  '  make seed-report-pages LOGIN_ID=fictional_user  別履歴へ架空35件を追加' \
 	  '  make verify-report-markdown       使い捨てDB/Chromiumで安全なMarkdown表示・無通信を検証' \
 	  '  make seed-markdown-reports LOGIN_ID=fictional_user  別履歴へ架空Markdownを追加' \
 	  '  make verify-collection-schedules  使い捨てDBでSchedule追加・編集・一括保存と画面を検証' \
