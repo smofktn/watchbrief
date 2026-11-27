@@ -263,7 +263,7 @@ GET /api/reportsは認証を先に照合し、初回/続きとも31件までのS
 
 ## ホームの最新保存済みReport（Issue #92）
 
-ルートの `make verify-home` は既存verify runnerの専用modeで、使い捨てCompose project・架空User/履歴・Chromiumを使います。通常DBの起動・停止・移行・初期化は行わず、終了時に通常DB状態不変と専用project/private状態の除去を確認します。
+ルートの `make verify-home` は既存verify runnerの専用modeで、使い捨てCompose project・架空User/履歴・Chromiumを使います。ホームAPIのJST日付・4状態件数・microsecond境界・本人/Collection分離と、Report詳細導線/更新/認証復帰を確認します。通常DBの起動・停止・移行・初期化は行わず、終了時に通常DB状態不変と専用project/private状態の除去を確認します。
 
 JobとAttempt双方の成功条件、複数成功Reportの最新選択、さらに新しいqueued/running/failed Job、現在Collection名とReport履歴名、空Collection、所有者分離、認証復帰・Report詳細・更新・logout、保存履歴不変を検証します。Fixtureは生成処理を実行せず、履歴の読取確認を生成成功とは扱いません。Chromium補助ライブラリが必要なら既存directoryを `BROWSER_LIBRARY_PATH` に指定します。
 

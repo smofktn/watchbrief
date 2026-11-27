@@ -387,7 +387,7 @@ def main():
                 if pages:
                     forbidden += [value for value in page_checks['cursors'] if value]
                 if home:
-                    forbidden += [value for value in home_checks.values() if value]
+                    forbidden += [value for key,value in home_checks.items() if key != 'as_of_date' and value]
                     forbidden += ['現在のCollection名（架空）', '成功時の履歴名（架空）', '空の架空Collection']
                 for value in forbidden:
                     assert value and value not in log_text, 'Private log content'
