@@ -151,3 +151,11 @@ cursorはサーバー値のまま再送し、解読/再生成/URL・storage永�
 検証入口はルートの `make verify-daily-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](../backend/README.md#日付別の保存済み予定結果issue-88)を参照する。
 
 契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。
+
+## Collection別の保存済み予定・結果（Issue #90）
+
+既存のReport一覧から `/reports/collections` を開き、本人の現在Collectionを選ぶと `/reports/collections/{ULID}` で履歴を読みます。成功行だけ保存済みReport詳細へ移動し、4状態/予定時刻は日本語/JSTで表示します。collection設定画面からはReportへの導線を追加しません。
+
+候補一覧と選択履歴は直列に取得し、同じuseResource/AbortSignalと認証epochに従います。選択・route・認証・更新ごとに古い取得/ページ/cursorを破棄し、遅い前Collection応答を混ぜません。続き失敗時は既表示とcursorを保持して同じcursorを再試行します。APIの所有権確認が最終境界であり、削除/他者/不存在を同じ404にします。削除済み履歴は日付別画面に残ります。
+
+`make frontend-test` の応答注入試験とルート `make verify-collection-jobs` の実DB/Chromium試験を区別します。画面/API契約は[Collection別画面](../docs/画面仕様/Collection別の予定・結果一覧.md)と[Job API](../docs/API仕様/get-api-collection-generation-jobs.md)を参照してください。

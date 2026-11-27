@@ -5,6 +5,7 @@ import MePage from './pages/MePage.vue'
 import CollectionsPage from './pages/CollectionsPage.vue'
 import CollectionDetailPage from './pages/CollectionDetailPage.vue'
 import DailyJobsPage from './pages/DailyJobsPage.vue'
+import CollectionJobsPage from './pages/CollectionJobsPage.vue'
 import ReportsPage from './pages/ReportsPage.vue'
 import ReportDetailPage from './pages/ReportDetailPage.vue'
 import NotFoundPage from './pages/NotFoundPage.vue'
@@ -31,6 +32,8 @@ export const createAppRouter = (history: RouterHistory = createWebHistory()) => 
     { path: '/collections/new', component: CollectionCreatePage },
     { path: '/collections/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: CollectionDetailPage },
     { path: '/reports', component: ReportsPage },
+    { path: '/reports/collections', component: CollectionJobsPage },
+    { path: '/reports/collections/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: CollectionJobsPage },
     { path: '/reports/daily', component: DailyJobsPage },
     { path: '/reports/:id([0-7][0-9A-HJKMNP-TV-Z]{25})', component: ReportDetailPage },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },

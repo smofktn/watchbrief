@@ -268,6 +268,10 @@ try {
     const { verifyDaily } = await import('./verify-daily-jobs-browser.mjs')
     issued.push(await verifyDaily({ checkpoint: value => { phase = 'daily-jobs-' + value }, changeDailyState, call, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
   }
+  if (fixture.verify_collection_jobs) {
+    const { verifyCollectionJobs } = await import('./verify-collection-jobs-browser.mjs')
+    await verifyCollectionJobs({ checkpoint: value => { phase = 'collection-jobs-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, fixture })
+  }
   if (fixture.verify_pages) {
     const { verifyPages } = await import('./verify-report-pages-browser.mjs')
     issued.push(await verifyPages({ checkpoint: value => { phase = 'report-pages-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
@@ -277,7 +281,7 @@ try {
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
   console.log('Browser: protected Report return, safe fallback, own settings/safe Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-(?:collection-(?:update|targets|sources|schedules)|report-markdown|report-pages|daily-jobs)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-(?:collection-(?:update|targets|sources|schedules|jobs)|report-markdown|report-pages|daily-jobs)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)

@@ -7,6 +7,7 @@ import { createAppRouter } from '../src/router'
 
 const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const otherId = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
+const collectionID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAX'
 const summary = { id, name: '架空の設定', enabled: false, display_order: 0 }
 const collection = { ...summary, version: '1', research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
 const report = { id, collection_name: '架空レポート', scheduled_at: '2026-01-02T00:00:00Z', generated_at: '2026-01-02T00:00:04Z', body_markdown: '<script>bad()</script><img src=x onerror=bad()>', summary_markdown: '', updates_started_at: '2026-01-01T00:00:00Z', updates_ended_at: '2026-01-02T00:00:02Z' }
@@ -1080,7 +1081,7 @@ describe('Report cursor continuation', () => {
   const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
   const first = { reports: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
   const last = { reports: rows.slice(30), next_cursor: null }
-  const count = () => wrapper!.findAll('a[href^="/reports/"]').filter(a => a.attributes('href') !== '/reports/daily').length
+  const count = () => wrapper!.findAll('a[href^="/reports/"]').filter(a => a.attributes('href') !== '/reports/daily' && !a.attributes('href')!.startsWith('/reports/collections')).length
   test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
     const { app, router, fetch } = await start('/reports', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/reports' ? response(first) : response({ ...report, id: rows[0].id }))
     expect(count()).toBe(30)
@@ -1372,5 +1373,137 @@ describe('daily route integration', () => {
     await flushPromises()
     expect(app.findAll('.daily-job')).toHaveLength(0)
     expect(app.text()).not.toContain('遅延した非公開予定')
+  })
+})
+
+describe('Collection history route and selection', () => {
+  const collections = [summary, { ...summary, id: collectionID2, name: '別の架空の設定', display_order: 1 }]
+  const jobs = [
+    { id, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:05.123456Z', status: 'queued', report_id: null },
+    { id: otherId, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:04.123456Z', status: 'running', report_id: null },
+    { id: collectionID2, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:03.123456Z', status: 'succeeded', report_id: id },
+    { id: '01ARZ3NDEKTSV4RRFFQ69G5FAY', collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:02.123456Z', status: 'failed', report_id: null },
+  ]
+
+  test('Report screen opens the selector without changing primary navigation', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/reports' ? response({ reports: [], next_cursor: null }) : response({ collections }))
+    expect(app.findAll('nav a')).toHaveLength(3)
+    await app.get('a[href="/reports/collections"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/reports/collections')
+    expect(app.text()).toContain('架空の設定')
+    expect(app.findAll('nav a')).toHaveLength(3)
+  })
+
+  test('deep selected URL survives login and shows all four states with only success linked', async () => {
+    let authenticated = false
+    const { app, router, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null, 204) }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response({ generation_jobs: jobs, next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(router.currentRoute.value.fullPath).toBe(`/login?return_to=%2Freports%2Fcollections%2F${id}`)
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${id}`)
+    expect(app.findAll('.collection-job')).toHaveLength(4)
+    expect(app.findAll('.collection-job a')).toHaveLength(1)
+    expect(app.get('.collection-job a').attributes('href')).toBe('/reports/' + id)
+    expect(app.findAll('.collection-job span').map(node => node.text())).toEqual(['待機中', '実行中', '成功', '失敗'])
+    expect(app.findAll('time')[0]!.text()).toBe('2026/11/27 12:04:05')
+    const calls = fetch.mock.calls.map(([path]) => path)
+    expect(calls.indexOf('/api/collections')).toBeLessThan(calls.indexOf(`/api/collections/${id}/generation-jobs`))
+  })
+
+  test('empty history differs from no current Collection and selection switches deep URLs', async () => {
+    let candidates = collections
+    const { app, router, fetch } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections: candidates }) }
+      if (path === `/api/collections/${collectionID2}/generation-jobs`) { return response({ generation_jobs: [], next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await app.get('#collection-jobs-choice').setValue(collectionID2)
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${collectionID2}`)
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain(`/api/collections/${collectionID2}/generation-jobs`)
+    candidates = []
+    await click('更新')
+    expect(app.text()).toContain('見つかりません。')
+    expect(fetch.mock.calls.filter(([path]) => path === `/api/collections/${collectionID2}/generation-jobs`)).toHaveLength(1)
+  })
+
+  test('no Collection candidate never calls the history API', async () => {
+    const { app, fetch } = await start('/reports/collections', path => path === '/api/me' ? me() : response({ collections: [] }))
+    expect(app.text()).toContain('表示できるCollectionはありません。')
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/collections'])
+  })
+
+  test('switching selected Collection discards a delayed older response', async () => {
+    const delayed = deferred<Response>()
+    const firstPage = [{ ...jobs[0]!, id: '01ARZ3NDEKTSV4RRFFQ69G5FAY' }]
+    const secondPage = [{ ...jobs[1]!, id: '01ARZ3NDEKTSV4RRFFQ69G5FAZ' }]
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return delayed.promise }
+      return response({ generation_jobs: secondPage, next_cursor: null })
+    })
+    await router.push(`/reports/collections/${collectionID2}`)
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('実行中')
+    delayed.resolve(response({ generation_jobs: firstPage, next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).not.toContain('待機中')
+  })
+
+  test('refresh rechecks candidates and reads a changed status from the first page', async () => {
+    let reads = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      return response({ generation_jobs: [{ ...jobs[0]!, status: ++reads === 1 ? 'running' : 'failed' }], next_cursor: null })
+    })
+    expect(app.get('.collection-job span').text()).toBe('実行中')
+    await click('更新')
+    expect(app.get('.collection-job span').text()).toBe('失敗')
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections')).toHaveLength(2)
+  })
+
+  test('continuation rejects malformed pages, preserves cursor and retries the same collection cursor', async () => {
+    const prefix = '01ARZ3NDEKTSV4RRFFQ69G5F'
+    const items = Array.from({ length: 35 }, (_, index) => ({ ...jobs[0]!, id: prefix + index.toString(16).toUpperCase().padStart(2,'0'), scheduled_at: `2026-11-27T03:04:${String(35-index).padStart(2,'0')}.123456Z` }))
+    const first = { generation_jobs: items.slice(0, 30), next_cursor: 'collection_cursor_A' }
+    const last = { generation_jobs: items.slice(30), next_cursor: null }
+    let attempts = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path.endsWith('/generation-jobs?cursor=collection_cursor_A')) { return response(++attempts === 1 ? { generation_jobs: [items[30], items[30]], next_cursor: null } : last) }
+      return response(first)
+    })
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).map(([path]) => path)).toEqual([
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+    ])
+  })
+
+  test('continuation 401 clears rows and returns to the selected deep URL login', async () => {
+    const prefix = '01ARZ3NDEKTSV4RRFFQ69G5F'
+    const first = { generation_jobs: Array.from({ length: 30 }, (_, i) => ({ ...jobs[0]!, id: prefix + i.toString(16).toUpperCase().padStart(2,'0'), scheduled_at: `2026-11-27T03:04:${String(35-i).padStart(2,'0')}.123456Z` })), next_cursor: 'collection_cursor_A' }
+    const { app, router } = await start(`/reports/collections/${id}`, path => path === '/api/me' ? me() : path === '/api/collections' ? response({ collections }) : path.includes('cursor=') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(router.currentRoute.value.fullPath).toBe(`/login?return_to=%2Freports%2Fcollections%2F${id}`)
+    expect(app.findAll('.collection-job')).toHaveLength(0)
   })
 })
