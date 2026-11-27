@@ -211,5 +211,3 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 親#18の設計commitを反映後、そのcommitから子#92を作り、PR baseを#18とする。ホームに本人の現在Collectionを既存順で表示し、最新保存済み成功Reportがある場合だけ既存詳細へリンクする。ホームからReport詳細→再読込/手動更新→logoutを最小正常系とし、所有者・空/未生成・最新選択・改名/削除・失敗復旧・認証/遅延破棄を隔離環境で検証する。
 
 当日予定状態・並べ替え・Collection削除/有効化は後続の親#18小作業、次回予定は#34。生成/外部アクセス/過去Job復元は行わない。窓口が独立レビューと親統合を担当し、実装担当はmerge・Issue状態変更をしない。親#18全体は未完了。契約は[API](API仕様/get-api-home.md)・[画面](画面仕様/ホーム.md)と関連設計を参照する。
-
-子#92では `/home`・`GET /api/home` を実装し、通常SELECT権限と既存索引のままmigrationなしで現在Collection/最新成功Reportを1 SQLで読む。通常DBを使わない `make verify-home` で複数成功・別Collection同時刻・成功後のqueued/running/failed・空/削除・認証/復旧/履歴保持を検証する。DB整合性triggerが矛盾するJob/Attempt/Report状態を拒否するため、Job成功・Attempt失敗・Reportありという不正組合せの分岐単独試験は未実施とする。実装結果・レビュー待ちは子PRを参照し、この項目は窓口レビュー/親統合後に完了扱いとする。
