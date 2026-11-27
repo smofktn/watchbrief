@@ -7,11 +7,31 @@ package generated
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const listHomeCollections = `-- name: ListHomeCollections :many
-SELECT c.id, c.name, COALESCE(latest.report_id, '') AS latest_report_id
+WITH today_jobs AS (
+    SELECT j.collection_id,
+           count(*) FILTER (WHERE j.status = 'queued') AS queued_count,
+           count(*) FILTER (WHERE j.status = 'running') AS running_count,
+           count(*) FILTER (WHERE j.status = 'succeeded') AS succeeded_count,
+           count(*) FILTER (WHERE j.status = 'failed') AS failed_count
+    FROM app.generation_jobs j
+    WHERE j.user_id = $1
+      AND j.collection_id IS NOT NULL
+      AND j.scheduled_at >= $2::timestamptz
+      AND j.scheduled_at < $3::timestamptz
+    GROUP BY j.collection_id
+)
+SELECT c.id, c.name, COALESCE(latest.report_id, '') AS latest_report_id,
+       COALESCE(today_jobs.queued_count, 0)::bigint AS today_queued_count,
+       COALESCE(today_jobs.running_count, 0)::bigint AS today_running_count,
+       COALESCE(today_jobs.succeeded_count, 0)::bigint AS today_succeeded_count,
+       COALESCE(today_jobs.failed_count, 0)::bigint AS today_failed_count
 FROM app.collections c
+LEFT JOIN today_jobs ON today_jobs.collection_id = c.id
 LEFT JOIN LATERAL (
     SELECT r.id AS report_id
     FROM app.generation_jobs j
@@ -28,14 +48,24 @@ WHERE c.user_id = $1
 ORDER BY c.display_order, c.id
 `
 
-type ListHomeCollectionsRow struct {
-	ID             string
-	Name           string
-	LatestReportID string
+type ListHomeCollectionsParams struct {
+	UserID  string
+	StartAt pgtype.Timestamptz
+	EndAt   pgtype.Timestamptz
 }
 
-func (q *Queries) ListHomeCollections(ctx context.Context, userID string) ([]ListHomeCollectionsRow, error) {
-	rows, err := q.db.Query(ctx, listHomeCollections, userID)
+type ListHomeCollectionsRow struct {
+	ID                  string
+	Name                string
+	LatestReportID      string
+	TodayQueuedCount    int64
+	TodayRunningCount   int64
+	TodaySucceededCount int64
+	TodayFailedCount    int64
+}
+
+func (q *Queries) ListHomeCollections(ctx context.Context, arg ListHomeCollectionsParams) ([]ListHomeCollectionsRow, error) {
+	rows, err := q.db.Query(ctx, listHomeCollections, arg.UserID, arg.StartAt, arg.EndAt)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +73,15 @@ func (q *Queries) ListHomeCollections(ctx context.Context, userID string) ([]Lis
 	var items []ListHomeCollectionsRow
 	for rows.Next() {
 		var i ListHomeCollectionsRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.LatestReportID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.LatestReportID,
+			&i.TodayQueuedCount,
+			&i.TodayRunningCount,
+			&i.TodaySucceededCount,
+			&i.TodayFailedCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

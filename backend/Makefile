@@ -24,7 +24,7 @@ help:
 	  '  make deps                 Go依存をlock情報に従って取得' \
 	  '  make build                APIとUser作成・再設定CLIを.local/binへビルド' \
 	  '  make verify-daily-jobs            使い捨てDB/Chromiumで日付別予定・結果を検証' \
-	  '  make verify-home                   使い捨てDB/Chromiumでホームと最新Reportを検証' \
+	  '  make verify-home                   使い捨てDB/Chromiumでホームの本日件数と最新Reportを検証' \
 	  '  make verify-collection-jobs        使い捨てDB/ChromiumでCollection別予定・結果を検証' \
 	  '  make verify-report-pages          使い捨てDB/ChromiumでReportの追加取得を検証' \
 	  '  make seed-report-pages LOGIN_ID=fictional_user  別履歴へ架空35件を追加' \

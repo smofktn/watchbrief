@@ -8,11 +8,20 @@ var (
 )
 
 type HomeCollection struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	LatestReportID *string `json:"latest_report_id"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	LatestReportID *string       `json:"latest_report_id"`
+	TodayJobCounts HomeJobCounts `json:"today_job_counts"`
+}
+
+type HomeJobCounts struct {
+	Queued    int64 `json:"queued"`
+	Running   int64 `json:"running"`
+	Succeeded int64 `json:"succeeded"`
+	Failed    int64 `json:"failed"`
 }
 
 type Home struct {
+	AsOfDate    string           `json:"as_of_date"`
 	Collections []HomeCollection `json:"collections"`
 }

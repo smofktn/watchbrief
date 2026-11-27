@@ -51,8 +51,8 @@ func TestHomeHTTPBoundaryAndMinimalResponse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
 			service := &homeResultStub{
-				value: domain.Home{Collections: []domain.HomeCollection{
-					{ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Name: "current collection", LatestReportID: &reportID},
+				value: domain.Home{AsOfDate: "2026-11-27", Collections: []domain.HomeCollection{
+					{ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Name: "current collection", LatestReportID: &reportID, TodayJobCounts: domain.HomeJobCounts{Queued: 1, Running: 2, Succeeded: 3, Failed: 4}},
 					{ID: "01ARZ3NDEKTSV4RRFFQ69G5FAX", Name: "no report"},
 				}},
 				err: tc.err,
@@ -71,7 +71,7 @@ func TestHomeHTTPBoundaryAndMinimalResponse(t *testing.T) {
 				t.Fatal("home response classification or caching is wrong")
 			}
 			if tc.name == "success" {
-				if service.calls != 1 || service.query != "" || service.digest != sha256.Sum256(raw[:]) || len(w.Result().Cookies()) != 0 {
+				if service.calls != 1 || service.query != "" || service.digest != sha256.Sum256(raw[:]) || len(w.Result().Cookies()) != 0 || !strings.Contains(w.Body.String(), `"as_of_date":"2026-11-27"`) || !strings.Contains(w.Body.String(), `"today_job_counts":{"queued":1,"running":2,"succeeded":3,"failed":4}`) {
 					t.Fatal("home request did not use the session digest read-only")
 				}
 				for _, forbidden := range []string{"summary_markdown", "body_markdown", "input_snapshot", "collection_name", "private"} {
