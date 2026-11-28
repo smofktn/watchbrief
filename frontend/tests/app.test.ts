@@ -13,9 +13,9 @@ const collection = { ...summary, version: '1', research_instruction: '', initial
 const report = { id, collection_name: '架空レポート', scheduled_at: '2026-01-02T00:00:00Z', generated_at: '2026-01-02T00:00:04Z', body_markdown: '<script>bad()</script><img src=x onerror=bad()>', summary_markdown: '', updates_started_at: '2026-01-01T00:00:00Z', updates_ended_at: '2026-01-02T00:00:02Z' }
 const response = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const zeroHomeCounts = { queued: 0, running: 0, succeeded: 0, failed: 0 }
-const home = (collections: Array<{ id: string, name: string, latest_report_id: string | null, today_job_counts?: typeof zeroHomeCounts }>, as_of_date = '2026-11-27') => response({
+const home = (collections: Array<{ id: string, name: string, latest_report_id: string | null, version?: string, today_job_counts?: typeof zeroHomeCounts }>, as_of_date = '2026-11-27') => response({
   as_of_date,
-  collections: collections.map(collection => ({ today_job_counts: zeroHomeCounts, ...collection })),
+  collections: collections.map(collection => ({ today_job_counts: zeroHomeCounts, version: '1', ...collection })),
 })
 const unauthenticated = () => response({ error: { code: 'unauthenticated' } }, 401)
 const me = () => response({ login_id: 'fictional_user' })
@@ -274,6 +274,197 @@ describe('home Collection report links', () => {
     await flushPromises()
     expect(app.text()).toContain('新しいHome')
     expect(app.text()).not.toContain('古いHome')
+  })
+
+  test('home reorder moves real rows, cancels safely, saves once, and is visible in settings and after reload', async () => {
+    const key = '00112233-4455-4677-8899-aabbccddeeff'
+    vi.stubGlobal('crypto', { randomUUID: () => key })
+    const first = { id, name: 'Collection A', version: '1', latest_report_id: otherId }
+    const second = { id: collectionID2, name: 'Collection B', version: '2', latest_report_id: null }
+    let order = [first, second]
+    const { app, router, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home(order) }
+      if (path === '/api/collections/order') {
+        const input = JSON.parse(options.body as string) as { expected: Array<{ id: string, version: string }>, ordered_ids: string[] }
+        expect(input.expected).toEqual([{ id, version: '1' }, { id: collectionID2, version: '2' }])
+        expect(input.ordered_ids).toEqual([collectionID2, id])
+        expect(options.method).toBe('PUT')
+        expect(new Headers(options.headers).get('Idempotency-Key')).toBe(key)
+        order = [second, first]
+        return response(null, 204)
+      }
+      if (path === '/api/collections') {
+        return response({ collections: order.map((row, index) => ({ id: row.id, name: row.name, enabled: index === 0, display_order: index })) })
+      }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    const rowNames = () => app.findAll('.home-collection h3').map(row => row.text())
+    expect(rowNames()).toEqual(['Collection A', 'Collection B'])
+    await click('表示順を変更')
+    expect(app.find('button[aria-label="Collection Aを上へ"]').attributes('disabled')).toBeDefined()
+    expect(app.find('button[aria-label="Collection Bを下へ"]').attributes('disabled')).toBeDefined()
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    await click('キャンセル')
+    expect(rowNames()).toEqual(['Collection A', 'Collection B'])
+    await click('表示順を変更')
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    await click('順序を保存')
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections/order')).toHaveLength(1)
+    await router.push('/collections')
+    await flushPromises()
+    expect(app.text().indexOf('Collection B')).toBeLessThan(app.text().indexOf('Collection A'))
+    await router.push('/home')
+    await flushPromises()
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    await click('ログアウト')
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  test('a confirmed order conflict is inspected and explicitly rebased with a new request key', async () => {
+    const firstKey = '00112233-4455-4677-8899-aabbccddeeff'
+    const nextKey = '00112233-4455-4677-8899-aabbccddeef0'
+    let keys: string[] = []
+    let writes = 0
+    const original = [
+      { id, name: 'Collection A', version: '1', latest_report_id: null },
+      { id: collectionID2, name: 'Collection B', version: '1', latest_report_id: null },
+    ]
+    vi.stubGlobal('crypto', { randomUUID: () => writes === 0 ? firstKey : nextKey })
+    const { app, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home(original) }
+      if (path === '/api/collections/order') {
+        keys.push(new Headers(options.headers).get('Idempotency-Key') ?? '')
+        writes++
+        return writes === 1 ? response({ error: { code: 'order_conflict' } }, 409) : response(null, 204)
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    await click('順序を保存')
+    expect(app.text()).toContain('下書きを残したまま最新状態を確認してください')
+    expect(app.text()).not.toContain('同じ内容で再試行')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('Collection A')
+    await click('最新状態を確認して下書きを維持')
+    expect(app.findAll('.home-collection h3').map(row => row.text())).toEqual(['Collection B', 'Collection A'])
+    await click('順序を保存')
+    expect(keys).toEqual([firstKey, nextKey])
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections/order')).toHaveLength(2)
+  })
+
+  test('latest conflict confirmation blocks duplicate reads, reports its timeout, and discards stale candidates', async () => {
+    vi.useFakeTimers()
+    const original = [{ id, name: 'Collection A', version: '1', latest_report_id: null }]
+    let homeReads = 0
+    const { app, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        homeReads++
+        if (homeReads === 1) { return home(original) }
+        if (homeReads === 2) {
+          return new Promise((_resolve, reject) => {
+            options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+          })
+        }
+        return home([{ ...original[0]!, name: '最新の架空Collection', version: '2' }])
+      }
+      if (path === '/api/collections/order') { return response({ error: { code: 'order_conflict' } }, 409) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    const refresh = app.find('button[aria-label="最新状態を確認"]')
+    await refresh.trigger('click')
+    await refresh.trigger('click')
+    await flushPromises()
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/home')).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(app.text()).toContain('接続できません')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('最新の架空Collection')
+    expect(app.text()).not.toContain('同じ内容で再試行')
+  })
+
+  test('latest conflict treats an HTTP server failure as a fixed application error', async () => {
+    let reads = 0
+    const { app } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return ++reads === 1 ? home([{ id, name: 'Collection A', latest_report_id: null }]) : response({ error: { code: 'internal_error' } }, 500) }
+      if (path === '/api/collections/order') { return response({ error: { code: 'order_conflict' } }, 409) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('処理に失敗しました。時間をおいて再度お試しください')
+    expect(app.text()).not.toContain('接続できません')
+    expect(app.text()).not.toContain('最新状態を確認して下書きを維持')
+  })
+
+  test('an unknown save retries the exact same body/key; a malformed 401 remains visible and locked', async () => {
+    const key = '00112233-4455-4677-8899-aabbccddeeff'
+    vi.stubGlobal('crypto', { randomUUID: () => key })
+    let failFirst = true
+    const writes: Array<{ body: string, key: string }> = []
+    const { app, router } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') {
+        writes.push({ body: options.body as string, key: new Headers(options.headers).get('Idempotency-Key') ?? '' })
+        if (failFirst) { failFirst = false; throw new Error('network down') }
+        return response(null, 204)
+      }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    expect(app.text()).toContain('保存結果が不明')
+    await click('同じ内容で再試行')
+    expect(writes).toHaveLength(2)
+    expect(writes[0]).toEqual(writes[1])
+    expect(router.currentRoute.value.path).toBe('/home')
+  })
+
+  test('a noncanonical delayed 401 is not silently treated as idle after logout', async () => {
+    const saveResponse = deferred<Response>()
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') { return saveResponse.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    await click('ログアウト')
+    saveResponse.resolve(response({ error: { code: 'unauthenticated' } }, 401))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(app.findAll('.home-collection')).toHaveLength(0)
+    expect(app.text()).not.toContain('Collection A')
+  })
+
+  test('an invalid 401 does not silently unlock the order form', async () => {
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') { return response({ error: { code: 'unexpected' } }, 401) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    expect(router.currentRoute.value.path).toBe('/home')
+    expect(app.text()).toContain('認証応答を確認できません')
+    expect(app.find('button').text()).not.toBe('順序を保存')
+    expect(app.text()).toContain('同じ内容で再試行')
   })
 })
 

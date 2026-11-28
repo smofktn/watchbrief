@@ -13,9 +13,17 @@ type CollectionStore interface {
 }
 
 type Collections struct {
-	Store   CollectionStore
-	Creator *CreateCollection
-	Updater *UpdateCollection
+	Store     CollectionStore
+	Creator   *CreateCollection
+	Updater   *UpdateCollection
+	Reorderer *ReorderCollections
+}
+
+func (uc Collections) Reorder(ctx context.Context, digest [32]byte, key string, input domain.CollectionOrderInput) error {
+	if uc.Reorderer == nil {
+		return domain.ErrCollectionStore
+	}
+	return uc.Reorderer.Reorder(ctx, digest, key, input)
 }
 
 func (uc Collections) Update(ctx context.Context, digest [32]byte, id, key string, input domain.CollectionUpdate) (domain.CollectionUpdateResult, error) {

@@ -25,7 +25,7 @@ WITH today_jobs AS (
       AND j.scheduled_at < $3::timestamptz
     GROUP BY j.collection_id
 )
-SELECT c.id, c.name, COALESCE(latest.report_id, '') AS latest_report_id,
+SELECT c.id, c.name, c.version, COALESCE(latest.report_id, '') AS latest_report_id,
        COALESCE(today_jobs.queued_count, 0)::bigint AS today_queued_count,
        COALESCE(today_jobs.running_count, 0)::bigint AS today_running_count,
        COALESCE(today_jobs.succeeded_count, 0)::bigint AS today_succeeded_count,
@@ -57,6 +57,7 @@ type ListHomeCollectionsParams struct {
 type ListHomeCollectionsRow struct {
 	ID                  string
 	Name                string
+	Version             int64
 	LatestReportID      string
 	TodayQueuedCount    int64
 	TodayRunningCount   int64
@@ -76,6 +77,7 @@ func (q *Queries) ListHomeCollections(ctx context.Context, arg ListHomeCollectio
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Version,
 			&i.LatestReportID,
 			&i.TodayQueuedCount,
 			&i.TodayRunningCount,

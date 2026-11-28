@@ -5,8 +5,8 @@ const collectionID = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const reportID = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
 const zeroCounts = { queued: 0, running: 0, succeeded: 0, failed: 0 }
 const homeBody = { as_of_date: '2026-11-27', collections: [
-  { id: collectionID, name: 'current', latest_report_id: reportID, today_job_counts: { queued: 1, running: 2, succeeded: 3, failed: 4 } },
-  { id: '01ARZ3NDEKTSV4RRFFQ69G5FAX', name: 'empty', latest_report_id: null, today_job_counts: zeroCounts },
+  { id: collectionID, name: 'current', version: '9223372036854775807', latest_report_id: reportID, today_job_counts: { queued: 1, running: 2, succeeded: 3, failed: 4 } },
+  { id: '01ARZ3NDEKTSV4RRFFQ69G5FAX', name: 'empty', version: '1', latest_report_id: null, today_job_counts: zeroCounts },
 ] }
 
 test('Home decoder accepts the server date and exact four-state counts', () => {
@@ -17,6 +17,9 @@ test('Home decoder accepts the server date and exact four-state counts', () => {
 test.each([
   { ...homeBody, collections: [{ ...homeBody.collections[0], body_markdown: 'private' }] },
   { ...homeBody, collections: [{ ...homeBody.collections[0], latest_report_id: 'bad' }] },
+  { ...homeBody, collections: [{ ...homeBody.collections[0], version: '0' }] },
+  { ...homeBody, collections: [{ ...homeBody.collections[0], version: '01' }] },
+  { ...homeBody, collections: [{ ...homeBody.collections[0], version: '9223372036854775808' }] },
   { ...homeBody, collections: [{ ...homeBody.collections[0], today_job_counts: { ...zeroCounts, failed: -1 } }] },
   { ...homeBody, collections: [{ ...homeBody.collections[0], today_job_counts: { queued: 0, running: 0, succeeded: 0 } }] },
   { ...homeBody, as_of_date: '2026-02-30' },
