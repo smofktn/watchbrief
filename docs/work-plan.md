@@ -88,7 +88,13 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 
 ## Issue #21の初回配備範囲（合意済み）
 
-初回はCollection本体の作成・編集までを含む版を使い、HTTPSのログインから保存・再表示・ログアウトを通す。[利用者向けの確認範囲](product-definition.md#ec2初回配備の確認範囲issue-21合意済み)と[統合・配備・運用の進め方](system-design.md#issue-21の初回配備の進め方合意済み)を参照する。#18の残機能、#19・#20の完成を初回の前提にせず、#21全体に残るJob生成の確認とは区別する。マージ・課金・外部公開はそれぞれ別途明示指示・合意後に実施する。
+EC2は必要な容量・性能を満たす範囲で最小化し、検証開始は `t3a.micro`・メモリ1 GiB、OS用8 GiB＋DB用2 GiBのgp3とする。[採用した起動設定と料金](system-design.md#初期ec2の作成設定と料金issue-21合意済み)を参照する。認証・DB・OS等を含む使用量を実測し、構成変更は費用と影響を合意してから行う。初回はCollection本体の作成・編集までを含む版を使い、HTTPSのログインから保存・再表示・ログアウトを通す。[利用者向けの確認範囲](product-definition.md#ec2初回配備の確認範囲issue-21合意済み)と[統合・配備・運用の進め方](system-design.md#issue-21の初回配備の進め方合意済み)を参照する。#18の残機能、#19・#20の完成を初回の前提にせず、#21全体に残るJob生成の確認とは区別する。マージ・課金・外部公開はそれぞれ別途明示指示・合意後に実施する。
+
+HTTPSは回線・IPを限定せず本人が利用する方針に合意した。管理SSHのIP制限は維持し、#49未実装による制限を公開判断に含める。具体構成の採用や外部公開を実行する承認とは分け、AWS接続手段・既存環境を読み取り確認してから構築対象と料金・影響を提示する。
+
+AWSの運用者ログインはIAM Identity Centerを採用する。[現在の設計と未決定事項](system-design.md#aws運用者のログインissue-21合意済み)に従い、Identity Centerディレクトリの作業用ユーザー・グループ・初期構築用の管理者権限・認証アプリのMFAを設定する。利用者による画面操作・ログインの確認と、AWS API/CLIでの設定照合を分けてIssueへ記録する。MFAの要求・復旧、CLIのSSO一時認証、既存リソース・料金状況の読み取り確認を残す。
+
+Terraformを使う方針に合意した後、まずコンソールで手動構築し、AWSの各部品を理解しながらTerraformへ対応づける順へ変更した。[構築順と未決定の詳細](system-design.md#構築順費用実装への引き継ぎ)に従い、コードの一括適用を先行させない。手動作成した資源を後で取り込む際は、importとplanで重複作成・置換・削除が起きないことを確認する。stateの保管・復旧等を含むIaC全体の整備は#30と分けて扱う。
 
 ## 将来の改善・移行候補
 
@@ -101,7 +107,7 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 | [#27](https://github.com/smofktn/watchbrief/issues/27) | 将来整備：DBバックアップ・復元手順と復元試験を用意する | 将来整備の方向性・本運用前に見直し |
 | [#28](https://github.com/smofktn/watchbrief/issues/28) | 将来整備：Report本文を非公開Gitへ副次アーカイブする | 将来整備の方向性に合意 |
 | [#29](https://github.com/smofktn/watchbrief/issues/29) | 将来改善：手動デプロイの手順確立後に配置・確認を自動化する | 候補・方式未採用 |
-| [#30](https://github.com/smofktn/watchbrief/issues/30) | 技術検討：初期構成の再現手順とIaCの導入時期・方式を決める | 候補・導入時期未決定 |
+| [#30](https://github.com/smofktn/watchbrief/issues/30) | 技術検討：初期構成の再現手順とIaCの導入時期・方式を決める | #21では手動構築後にTerraformへ対応づける方針。実導入時期・state管理・範囲の詳細は未決定 |
 | [#31](https://github.com/smofktn/watchbrief/issues/31) | 将来改善：生成Jobの自動retryと再実行ルールを設計する | MVP後の優先改善候補 |
 | [#32](https://github.com/smofktn/watchbrief/issues/32) | 将来検討：メールによるパスワードリセットを提供する | 機能候補・採用未決定 |
 | [#33](https://github.com/smofktn/watchbrief/issues/33) | 将来検討：時間によるセッション失効と複数端末ログアウト管理 | 機能候補・採用未決定 |
