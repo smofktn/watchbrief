@@ -1,0 +1,194 @@
+[
+  {
+    "expression": "0 7 * * *",
+    "valid": true
+  },
+  {
+    "expression": "0 7,19 * * *",
+    "valid": true
+  },
+  {
+    "expression": "*/15 0-23/2 * * 1-5",
+    "valid": true
+  },
+  {
+    "expression": "  00\t07 * * 0,7  ",
+    "valid": true
+  },
+  {
+    "expression": "0 0 31 2 *",
+    "valid": true
+  },
+  {
+    "expression": "0 0 1 * 1",
+    "valid": true
+  },
+  {
+    "expression": "* * * * *",
+    "valid": true
+  },
+  {
+    "expression": "0 0 */2 * 1",
+    "valid": true
+  },
+  {
+    "expression": "0 0 * * */2",
+    "valid": true
+  },
+  {
+    "expression": "0 0 * 1-12/12 0-7/7",
+    "valid": true
+  },
+  {
+    "expression": "0 7 * * 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "valid": true
+  },
+  {
+    "expression": "",
+    "valid": false
+  },
+  {
+    "expression": " ",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * *",
+    "valid": false
+  },
+  {
+    "expression": "0 0 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "@daily",
+    "valid": false
+  },
+  {
+    "expression": "TZ=Asia/Tokyo 0 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "CRON_TZ=UTC 0 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "60 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "-1 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 24 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 0 * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 32 * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * 0 *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * 13 *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 8",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * MON",
+    "valid": false
+  },
+  {
+    "expression": "0 7 ? * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 L * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1#2",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 5-1",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1/2",
+    "valid": false
+  },
+  {
+    "expression": "*/0 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "*/60 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "*/-1 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * ,1",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1,",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1,,2",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1-",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * *\n",
+    "valid": false
+  },
+  {
+    "expression": "0\n7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * *\r",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "０ 7 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * *\u0000",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "valid": false
+  },
+  {
+    "expression": "99999999999999999999 0 * * *",
+    "valid": false
+  },
+  {
+    "expression": "0 7 * * 1-2/0",
+    "valid": false
+  }
+]

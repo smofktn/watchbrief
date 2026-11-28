@@ -15,7 +15,7 @@ export APP_ORIGIN API_ADDR API_PASSWORD_FILE LOGIN_ID DB_PASSWORD_FILE
 CURRENT_PACKAGES := ./...
 COVERAGE_DIR := $(PROJECT_ROOT)/.local/coverage/backend
 
-.PHONY: verify-collection-update verify-collection-creation verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test coverage test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
+.PHONY: verify-home verify-daily-jobs verify-collection-jobs verify-report-pages seed-report-pages verify-report-markdown seed-markdown-reports verify-collection-schedules verify-collection-sources verify-collection-targets verify-collection-update verify-collection-creation verify-issue17 help deps dev build build-api build-user-create build-password-reset password-reset verify-password-reset db-provision-password-resetter user-create fmt test coverage test-db benchmark-password check-input verify-user-create verify-login-api verify-logout-api seed-collections verify-collections-api seed-reports verify-reports-api tools-install goose-install sqlc-install sqlc-generate sqlc-vet goose-validate db-prepare db-up db-stop db-status db-bootstrap db-migrate db-migration-status db-version db-verify
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,16 @@ help:
 	  '  make dev                  API起動（APP_ORIGINで画面Originを指定可能）' \
 	  '  make deps                 Go依存をlock情報に従って取得' \
 	  '  make build                APIとUser作成・再設定CLIを.local/binへビルド' \
+	  '  make verify-daily-jobs            使い捨てDB/Chromiumで日付別予定・結果を検証' \
+	  '  make verify-home                   使い捨てDB/Chromiumでホーム順序・本日件数・再送/競合を検証' \
+	  '  make verify-collection-jobs        使い捨てDB/ChromiumでCollection別予定・結果を検証' \
+	  '  make verify-report-pages          使い捨てDB/ChromiumでReportの追加取得を検証' \
+	  '  make seed-report-pages LOGIN_ID=fictional_user  別履歴へ架空35件を追加' \
+	  '  make verify-report-markdown       使い捨てDB/Chromiumで安全なMarkdown表示・無通信を検証' \
+	  '  make seed-markdown-reports LOGIN_ID=fictional_user  別履歴へ架空Markdownを追加' \
+	  '  make verify-collection-schedules  使い捨てDBでSchedule追加・編集・一括保存と画面を検証' \
+	  '  make verify-collection-sources   使い捨てDBで情報源の一括保存と画面を検証' \
+	  '  make verify-collection-targets   使い捨てDBで本体・対象の一括保存と画面を検証' \
 	  '  make verify-collection-update    使い捨てDBで本体編集・競合・再試行・画面を検証' \
 	  '  make verify-collection-creation  使い捨てDBで新規保存・同時再試行・画面を検証' \
 	  '  make verify-issue17       専用の使い捨てDBで#17を横断検証（Chromium必須）' \
@@ -178,3 +188,35 @@ verify-collection-creation: build
 
 verify-collection-update: build
 	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-update
+
+verify-collection-sources: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-sources
+
+verify-collection-targets: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-targets
+
+verify-collection-schedules: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-schedules
+
+verify-report-markdown: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --report-markdown
+
+seed-markdown-reports:
+	@test -n "$$LOGIN_ID" || { printf '%s\n' 'LOGIN_IDを指定してください' >&2; exit 2; }
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/seed-markdown-reports.py --login-id "$$LOGIN_ID"
+
+verify-report-pages: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --report-pages
+
+seed-report-pages:
+	@test -n "$$LOGIN_ID" || { printf '%s\n' 'LOGIN_IDを指定してください' >&2; exit 2; }
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/seed-report-pages.py --login-id "$$LOGIN_ID"
+
+verify-daily-jobs: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --daily-jobs
+
+verify-collection-jobs: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --collection-jobs
+
+verify-home: build
+	cd "$(PROJECT_ROOT)" && $(PYTHON) scripts/verify-issue17.py --home

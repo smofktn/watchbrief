@@ -53,7 +53,7 @@ func TestCollectionUpdateBoundary(t *testing.T) {
 		{"null version", strings.Replace(body, `"version":"1"`, `"version":null`, 1), key, origin, cookie, nil, 400, 0},
 		{"unpaired", strings.Replace(body, "架空", `\ud800`, 1), key, origin, cookie, nil, 400, 0},
 		{"extra", body + "{}", key, origin, cookie, nil, 400, 0},
-		{"too big", strings.Repeat(" ", 65537), key, origin, cookie, nil, 400, 0},
+		{"too big", strings.Repeat(" ", 1048577), key, origin, cookie, nil, 400, 0},
 		{"invalid utf8", string([]byte{0xff}), key, origin, cookie, nil, 400, 0},
 		{"expired", body, key, origin, cookie, domain.ErrUnauthenticated, 401, 1},
 		{"hidden", body, key, origin, cookie, domain.ErrResourceNotFound, 404, 1},
@@ -88,5 +88,48 @@ func TestCollectionUpdateBoundary(t *testing.T) {
 				t.Fatal("update contract changed")
 			}
 		})
+	}
+}
+
+func TestTargetChangeStrictJSON(t *testing.T) {
+	base := `{"name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1"`
+	for _, value := range []string{`null`, `{}`, `[null]`, `[{"id":null,"name":"x"}]`, `[{"id":null,"name":"x","instruction":null}]`, `[{"id":null,"name":"x","instruction":"","enabled":true}]`, `[{"id":null,"name":"x","name":"y","instruction":""}]`, `[{"name":"x","instruction":"","extra":null}]`, `[{"id":1,"name":"x","instruction":""}]`, `[{"id":null,"name":"\ud800","instruction":""}]`} {
+		if _, err := readCollectionUpdate([]byte(base + `,"targets":` + value + `}`)); err == nil {
+			t.Fatal("accepted invalid target shape")
+		}
+	}
+	good := `[{"id":null,"name":"架空対象","instruction":""}]`
+	input, err := readCollectionUpdate([]byte(base + `,"targets":` + good + `}`))
+	if err != nil || len(input.Targets) != 1 || input.Targets[0].ID != nil || input.Targets[0].Name != "架空対象" {
+		t.Fatal("valid target not preserved")
+	}
+	large := strings.Repeat(" ", 70000) + base + `,"targets":` + good + `}`
+	if _, err := readCollectionUpdate([]byte(large)); err != nil {
+		t.Fatal("valid JSON above old limit rejected by parser")
+	}
+}
+
+func TestSourceChangeStrictJSON(t *testing.T) {
+	valid := `{"id":null,"watch_target_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","name":"架空","url":"https://example.com","instruction":""}`
+	if _, err := readSourceChange([]byte(valid)); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{`null`, `[]`, `{}`, `{"id":null,"watch_target_id":"x","name":"x","url":"x","instruction":"","extra":1}`, `{"id":null,"id":null,"watch_target_id":"x","name":"x","url":"x","instruction":""}`, `{"id":null,"watch_target_id":null,"name":"x","url":"x","instruction":""}`, `{"id":null,"watch_target_id":"x","name":"x","url":null,"instruction":""}`, valid + `{}`} {
+		if _, err := readSourceChange([]byte(body)); err == nil {
+			t.Fatal("invalid source JSON accepted")
+		}
+	}
+}
+
+func TestScheduleChangeStrictJSON(t *testing.T) {
+	base := `{"name":"架空","research_instruction":"","initial_lookback_mode":"ai","initial_lookback_days":null,"version":"1"`
+	for _, value := range []string{`null`, `[]`, `{}`, `{"id":null}`, `{"cron_expression":"0 7 * * *"}`, `{"id":null,"cron_expression":null}`, `{"id":null,"cron_expression":7}`, `{"id":1,"cron_expression":"0 7 * * *"}`, `{"id":null,"id":null,"cron_expression":"0 7 * * *"}`, `{"id":null,"cron_expression":"0 7 * * *","extra":1}`, `{"id":null,"cron_expression":"\ud800"}`} {
+		if _, err := readCollectionUpdate([]byte(base + `,"schedule":` + value + `}`)); err == nil {
+			t.Fatal("accepted invalid schedule shape")
+		}
+	}
+	input, err := readCollectionUpdate([]byte(base + `,"schedule":{"id":null,"cron_expression":" 0 7 * * * "},"targets":[],"sources":[]}`))
+	if err != nil || input.Schedule == nil || input.Schedule.ID != nil || input.Schedule.CronExpression != " 0 7 * * * " {
+		t.Fatal("schedule not preserved")
 	}
 }

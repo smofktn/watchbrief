@@ -2,7 +2,7 @@
 SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at
 FROM app.reports r JOIN app.generation_attempts a ON a.id = r.generation_attempt_id
 JOIN app.generation_jobs j ON j.id = a.generation_job_id
-WHERE j.user_id = $1 ORDER BY j.scheduled_at DESC, r.id DESC;
+WHERE j.user_id = $1 ORDER BY j.scheduled_at DESC, r.id DESC LIMIT 31;
 
 -- name: OwnedReport :one
 SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at,
@@ -10,3 +10,10 @@ SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at,
 FROM app.reports r JOIN app.generation_attempts a ON a.id = r.generation_attempt_id
 JOIN app.generation_jobs j ON j.id = a.generation_job_id
 WHERE r.id = $1 AND j.user_id = $2;
+
+-- name: ListOwnedReportsBefore :many
+SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at
+FROM app.reports r JOIN app.generation_attempts a ON a.id = r.generation_attempt_id
+JOIN app.generation_jobs j ON j.id = a.generation_job_id
+WHERE j.user_id = sqlc.arg(user_id) AND (j.scheduled_at, r.id) < (sqlc.arg(before_at)::timestamptz, sqlc.arg(before_id)::text)
+ORDER BY j.scheduled_at DESC, r.id DESC LIMIT 31;

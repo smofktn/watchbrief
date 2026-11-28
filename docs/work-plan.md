@@ -59,6 +59,7 @@ Issue #53の既存AI実装案は[認証の実装方式](auth-implementation.md)�
 - 通常の作業フォルダーでブランチを切り替え、worktreeは使わない。#17の子Issueは必要な成果をコミットした#17を起点にブランチを作る。未コミット変更はブランチの履歴に含まれないため、分岐前に内容と基点を確認する。
 - #17の全体管理・レビューを扱うメインセッションと、子Issueの支援セッションを区別する。同じ作業フォルダーで同時に編集やブランチ切替をしない。
 - 実装後はセルフレビューし、指摘修正と必要な再検証を行う。実動作確認済み・文書のみ確認・未確認を分け、未解決を完了扱いにしない。
+- 明示された継続委任では、窓口が正本・未完了範囲から次の小子Issueを選定して担当へ指示し、子Issueごとに設計→設計セルフレビュー/修正→実装/テスト→実装・テストのセルフレビュー/修正→必要な再テスト→Issue全体セルフレビュー→窓口独立レビュー→親への統合→窓口選定の次Issueを順に進める。これは1件ずつのサイクルであり、実装担当が複数Issueを並行/先行着手する許可ではない。継続委任は正本にない機能・要件変更・外部サービスの採用、main統合、Issue状態変更、AWS/通常DB操作を許可しない。
 - 決定は担当docs、経緯・進捗・検証結果はIssue・PRへ残す。既存AI案は参考として残し、具体方式を利用者の採用決定として扱わない。実行ログ、セッションID、制御用ファイルはGitへ追加しない。
 - Issueのclose/reopen・PRマージは引き続き利用者の明示指示時だけ行う。
 
@@ -162,3 +163,69 @@ Terraformを使う方針に合意した後、まずコンソールで手動構�
 利用者の依頼に基づき、次の検討対象として子Issue [#74](https://github.com/smofktn/watchbrief/issues/74)「既存Collection本体の編集・保存・再表示」を選定した。最初の正常系は、作成済みの停止中Collectionで名前・調査方針・初回確認期間を変更し、保存後の詳細・一覧・再読み込みで確認する経路とする。競合時は入力を保持して保存を止め、最新値を確認して編集し直す方針に合意した。版番号と更新要求番号で競合と同一保存操作の再試行を区別する方式にも合意し、本体編集の実装・検証を進める。具体契約は[更新API](API仕様/patch-api-collections.md)と[編集画面](画面仕様/コレクション本体の編集.md)へ記録する。現在の合意範囲は[本体編集の仕様](product-definition.md#collection本体の編集issue-74)を参照する。
 
 その後は、配下設定の編集、有効化・削除・並べ替え、履歴・ホームの閲覧、安全なMarkdown表示を動作確認できるまとまりで進める案とする。後続工程の一括実装や、残りの子Issue・PRの分け方はまだ合意していない。
+
+## Issue #18の次の確認範囲（範囲合意済み）
+
+停止中Collection配下のWatchTargetの対象名・任意の補足指示の追加と編集を扱う。[合意範囲と未決定事項](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)を参照する。画面・API・入力範囲と子Issue #78に合意し、本体と対象の一括保存を実装する。子PRは既存方針どおり#18をbaseとする。
+
+合意したWatchTarget一括保存は子Issue [#78](https://github.com/smofktn/watchbrief/issues/78)で実装・検証・セルフレビューする。親#18の設計commitから子#78を作り、PRのbaseは#18とする。
+
+## 情報源追加・編集（Issue #18）
+
+代理回答で停止中Collectionの情報源追加/編集・本体/対象との一括保存を採用した。親#18に具体契約を記録してcommit後、子Issue/ブランチで実装・隔離DB/画面検証・セルフレビューを進める。子PRのbaseは#18。今回だけで親全体の完了とはしない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+子Issueは[#80](https://github.com/smofktn/watchbrief/issues/80)。親設計commitから子ブランチ#80を作り、子PRのbaseを#18とする。
+
+## 停止中CollectionのSchedule追加・編集（Issue #82）
+
+利用者から設計回答を委任された上ペインの代理判断で採用。既存編集に日本時間raw cronを追加し、本体・対象・情報源と一括保存する。詳細→追加→保存→再読込→式編集→保存/再表示を最小正常系とし、全体版・旧要求互換・原子性・入力保持・認証消去を維持する。契約は[更新API](API仕様/patch-api-collections.md#schedule追加編集)、操作は[編集画面](画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)。
+
+削除・有効化等は#18の後続、次回予定表示は#34、生成/実行は#19、AI/外部取得は#20。#18全体の完了を意味しない。通常DB/本番/EC2への版13適用と配備は別途扱う。
+
+## 保存済みReportの安全なMarkdown表示
+
+利用者がこの既存ペインだけへ実装・検証・セルフレビュー/修正・親#18向けPR提出までを明示依頼。上ペインの設計代理判断に基づき、所有Report深いURL→ログイン復帰→見出し/段落/強調/リスト/コード/出典リンク→再読込→logoutを通す。本格一覧/home・生成/外部取得・Collection有効化は別作業。#18全体は未完了。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+この表示作業は子Issue [#84](https://github.com/smofktn/watchbrief/issues/84)。親の設計commit起点の子ブランチで実装し、PR base=#18とする。
+
+## 保存済み成功Report一覧の追加取得
+
+利用者の継続委任と上ペインの代理判断で、成功Report一覧の30件ずつcursor追加取得を小さな子作業とする。35件→30件→残り5件/終了→安全な詳細→一覧/再読込→logoutを先に通し、境界/精度/失敗復旧/認証を隔離検証する。子PR base=#18、担当ペインはマージ/Issue状態変更をせず監督レビューへ提出する。#18全体は未完了。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+追加取得の子Issueは[#86](https://github.com/smofktn/watchbrief/issues/86)。親の設計commitを起点に子ブランチで実装し、監督レビュー用PRを#18へ提出する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+利用者の直接了承に基づく[#18の採用記録](https://github.com/smofktn/watchbrief/issues/18#issuecomment-7208655478)を正本へ反映し、親設計commitから子#88を作る。既存レポート→日付別30件→続き→成功詳細→更新/再読込→logoutを先に通し、混合4状態・境界/精度/JST・所有者/削除済みCollection・障害保持/復旧・認証/遅延破棄を使い捨てCompose/Chromiumで検証する。
+
+唯一の実装担当がセルフレビュー/修正後にbase=#18の子PRを提出し、窓口が独立レビューと親への統合を担当する。実装担当はマージ/Issue状態変更をしない。親#18全体は未完了。通常DB/AWS/元AWSフォルダーの変更は対象外。具体契約は[API](API仕様/get-api-generation-jobs.md)と[画面](画面仕様/日付別の予定・結果一覧.md)。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+既存のCollection別履歴仕様を `/reports/collections` の選択と `/reports/collections/{ULID}` の履歴閲覧へつなぐ。本人の現在Collectionだけを選び、選択Collectionの保存済みJobを30件ずつ新しい順に取得する。成功だけ既存詳細へ移動する。API/画面/認可/cursor/削除競合の具体契約は[API](API仕様/get-api-collection-generation-jobs.md)・[画面](画面仕様/Collection別の予定・結果一覧.md)・関連設計を参照する。
+
+親#18へ設計commitを反映した後、そのcommitを起点に子#90を作り、PR baseを#18とする。Collection候補→履歴→成功詳細→戻る/再読込→logoutを最小正常系として、隔離DB/架空データ/Chromiumで境界・認可・削除・切替競合・失敗保持を検証する。home、生成・外部取得、Collection編集/有効化/削除/並べ替えは範囲外。窓口が独立レビュー・親への統合を行い、実装担当はmerge・Issue状態変更を行わない。親#18全体は未完了。
+
+## ホームの最新保存済みReport（Issue #92）
+
+親#18の設計commitを反映後、そのcommitから子#92を作り、PR baseを#18とする。ホームに本人の現在Collectionを既存順で表示し、最新保存済み成功Reportがある場合だけ既存詳細へリンクする。ホームからReport詳細→再読込/手動更新→logoutを最小正常系とし、所有者・空/未生成・最新選択・改名/削除・失敗復旧・認証/遅延破棄を隔離環境で検証する。
+
+当日予定状態は小Issue #94で扱い、並べ替え・Collection削除/有効化は親#18の後続、次回予定は#34とする。生成/外部アクセス/過去Job復元は行わない。親#18全体は未完了。契約は[API](API仕様/get-api-home.md)・[画面](画面仕様/ホーム.md)と関連設計を参照する。
+
+## ホームの本日予定状態（Issue #94）
+
+現在CollectionごとにJST本日の保存済みGenerationJobを4状態別に数え、ホームの最新Report導線へ補助表示する。Jobが0件なら状態欄を出さず、既存のReportなし表示は独立して維持する。時刻境界・JSON・表示細部は正本と[API](API仕様/get-api-home.md)・[画面](画面仕様/ホーム.md)に従う。
+
+並べ替え・Collection削除/有効化、次回予定#34、生成・外部取得・cronからの過去Job復元は対象外。実装は親#18の子Issue/PRとして扱い、親全体を完了扱いにしない。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+ホームで現在の本人Collectionを一括並べ替えし、成功後にホーム・既存設定一覧・再読込へ反映する。保存要求は完全な現在順/versionを前提条件にし、owner lock namespace 18と同一transaction内の要求digest/replay・一括更新で競合、応答喪失、部分保存を扱う。表示順一意制約なし、同値時ID順、既存versionと要求互換を維持する。API・画面の詳細契約は[get API](API仕様/get-api-home.md)、[順序更新API](API仕様/put-api-collection-order.md)、[ホーム](画面仕様/ホーム.md)を参照する。
+
+ON/OFF、最新Report導線、本日状態、既存一覧/詳細、作成/編集と認証epochの消去を保つ。Collection削除機能は現行にないため追加せず、将来実装時はowner lockを共有する。#18は未完了。

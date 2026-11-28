@@ -11,6 +11,95 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendCollectionSchedule = `-- name: AppendCollectionSchedule :exec
+INSERT INTO app.collection_schedules(id, collection_id, cron_expression) VALUES ($1, $2, $3)
+`
+
+type AppendCollectionScheduleParams struct {
+	ID             string
+	CollectionID   string
+	CronExpression string
+}
+
+func (q *Queries) AppendCollectionSchedule(ctx context.Context, arg AppendCollectionScheduleParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionSchedule, arg.ID, arg.CollectionID, arg.CronExpression)
+	return err
+}
+
+const appendCollectionSource = `-- name: AppendCollectionSource :exec
+INSERT INTO app.information_sources(id, watch_target_id, name, url, instruction)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type AppendCollectionSourceParams struct {
+	ID            string
+	WatchTargetID string
+	Name          string
+	Url           string
+	Instruction   string
+}
+
+func (q *Queries) AppendCollectionSource(ctx context.Context, arg AppendCollectionSourceParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionSource,
+		arg.ID,
+		arg.WatchTargetID,
+		arg.Name,
+		arg.Url,
+		arg.Instruction,
+	)
+	return err
+}
+
+const appendCollectionTarget = `-- name: AppendCollectionTarget :exec
+INSERT INTO app.watch_targets(id, collection_id, name, instruction, enabled, display_order)
+SELECT $1, $2, $3, $4, true, COALESCE(MAX(display_order), -1) + 1
+FROM app.watch_targets WHERE collection_id = $2
+`
+
+type AppendCollectionTargetParams struct {
+	ID           string
+	CollectionID string
+	Name         string
+	Instruction  string
+}
+
+func (q *Queries) AppendCollectionTarget(ctx context.Context, arg AppendCollectionTargetParams) error {
+	_, err := q.db.Exec(ctx, appendCollectionTarget,
+		arg.ID,
+		arg.CollectionID,
+		arg.Name,
+		arg.Instruction,
+	)
+	return err
+}
+
+const collectionScheduleID = `-- name: CollectionScheduleID :one
+SELECT id FROM app.collection_schedules WHERE collection_id = $1
+`
+
+func (q *Queries) CollectionScheduleID(ctx context.Context, collectionID string) (string, error) {
+	row := q.db.QueryRow(ctx, collectionScheduleID, collectionID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const collectionSourceTarget = `-- name: CollectionSourceTarget :one
+SELECT id FROM app.watch_targets WHERE id = $1 AND collection_id = $2
+`
+
+type CollectionSourceTargetParams struct {
+	ID           string
+	CollectionID string
+}
+
+func (q *Queries) CollectionSourceTarget(ctx context.Context, arg CollectionSourceTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, collectionSourceTarget, arg.ID, arg.CollectionID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const collectionUpdateRequest = `-- name: CollectionUpdateRequest :one
 SELECT collection_id, input_digest, result_version FROM app.collection_update_requests
 WHERE user_id = $1 AND request_key = $2
@@ -77,6 +166,76 @@ func (q *Queries) RecordCollectionUpdate(ctx context.Context, arg RecordCollecti
 		arg.ResultVersion,
 	)
 	return err
+}
+
+const updateCollectionSchedule = `-- name: UpdateCollectionSchedule :one
+UPDATE app.collection_schedules SET cron_expression = $3, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2 RETURNING id
+`
+
+type UpdateCollectionScheduleParams struct {
+	ID             string
+	CollectionID   string
+	CronExpression string
+}
+
+func (q *Queries) UpdateCollectionSchedule(ctx context.Context, arg UpdateCollectionScheduleParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionSchedule, arg.ID, arg.CollectionID, arg.CronExpression)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateCollectionSource = `-- name: UpdateCollectionSource :one
+UPDATE app.information_sources SET name = $3, url = $4, instruction = $5, updated_at = clock_timestamp()
+WHERE id = $1 AND watch_target_id = $2
+RETURNING id
+`
+
+type UpdateCollectionSourceParams struct {
+	ID            string
+	WatchTargetID string
+	Name          string
+	Url           string
+	Instruction   string
+}
+
+func (q *Queries) UpdateCollectionSource(ctx context.Context, arg UpdateCollectionSourceParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionSource,
+		arg.ID,
+		arg.WatchTargetID,
+		arg.Name,
+		arg.Url,
+		arg.Instruction,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateCollectionTarget = `-- name: UpdateCollectionTarget :one
+UPDATE app.watch_targets SET name = $3, instruction = $4, updated_at = clock_timestamp()
+WHERE id = $1 AND collection_id = $2
+RETURNING id
+`
+
+type UpdateCollectionTargetParams struct {
+	ID           string
+	CollectionID string
+	Name         string
+	Instruction  string
+}
+
+func (q *Queries) UpdateCollectionTarget(ctx context.Context, arg UpdateCollectionTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateCollectionTarget,
+		arg.ID,
+		arg.CollectionID,
+		arg.Name,
+		arg.Instruction,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateOwnedCollection = `-- name: UpdateOwnedCollection :one

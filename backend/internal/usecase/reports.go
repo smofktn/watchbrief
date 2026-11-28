@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"net/url"
 
 	"github.com/smofktn/watchbrief/backend/internal/domain"
 )
@@ -9,24 +10,55 @@ import (
 type ReportStore interface {
 	UserIDBySessionHash(context.Context, [32]byte) (string, error)
 	ListOwnedReports(context.Context, string) ([]domain.ReportSummary, error)
+	ListOwnedReportsBefore(context.Context, string, domain.ReportCursor) ([]domain.ReportSummary, error)
 	OwnedReport(context.Context, string, string) (domain.Report, error)
 }
 
 type Reports struct{ Store ReportStore }
 
-func (uc Reports) List(ctx context.Context, digest [32]byte) ([]domain.ReportSummary, error) {
+func (uc Reports) List(ctx context.Context, digest [32]byte, rawQuery string) (domain.ReportPage, error) {
+	empty := domain.ReportPage{}
 	if ctx.Err() != nil || uc.Store == nil {
-		return nil, domain.ErrReportStore
+		return empty, domain.ErrReportStore
 	}
 	userID, err := uc.Store.UserIDBySessionHash(ctx, digest)
 	if err != nil {
-		return nil, err
+		return empty, err
 	}
-	rows, err := uc.Store.ListOwnedReports(ctx, userID)
-	if ctx.Err() != nil {
-		return nil, domain.ErrReportStore
+	// Query validation follows session authentication, even for malformed escapes.
+	var cursor *domain.ReportCursor
+	if rawQuery != "" {
+		if len(rawQuery) > 512 {
+			return empty, domain.ErrReportCursor
+		}
+		query, err := url.ParseQuery(rawQuery)
+		if err != nil || len(query) != 1 || len(query["cursor"]) != 1 {
+			return empty, domain.ErrReportCursor
+		}
+		cursor, err = domain.DecodeReportCursor(query.Get("cursor"))
+		if err != nil {
+			return empty, err
+		}
 	}
-	return rows, err
+	var rows []domain.ReportSummary
+	if cursor == nil {
+		rows, err = uc.Store.ListOwnedReports(ctx, userID)
+	} else {
+		rows, err = uc.Store.ListOwnedReportsBefore(ctx, userID, *cursor)
+	}
+	if ctx.Err() != nil || err != nil {
+		return empty, domain.ErrReportStore
+	}
+	page := domain.ReportPage{Reports: rows}
+	if page.Reports == nil {
+		page.Reports = []domain.ReportSummary{}
+	}
+	if len(rows) > domain.ReportPageSize {
+		page.Reports = rows[:domain.ReportPageSize]
+		next := domain.EncodeReportCursor(page.Reports[domain.ReportPageSize-1])
+		page.NextCursor = &next
+	}
+	return page, nil
 }
 
 func (uc Reports) Get(ctx context.Context, digest [32]byte, id string) (domain.Report, error) {

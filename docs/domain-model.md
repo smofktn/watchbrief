@@ -130,3 +130,67 @@ GenerationAttemptの `failure_type` は、処理結果を表す `status` とは�
 ## 保存履歴を読む最初の実装（Issue #57）
 
 管理seedがJob・Attemptの成功とReport一式を原子的に保存し、アプリは保存済み本文を読む。所有者は必須のJob.user_idで確定し、Collectionの現在の有無に依存しない。本文は構造化データと同じDBを正本とする。生成・状態遷移を実行するWorkerは #19の対象であり、seedは生成処理の代用仕様ではない。[物理制約](database-design.md#保存reportの物理化issue-57)と[最小閲覧](画面仕様/保存済みReportの取得.md)を参照する。
+
+## WatchTarget追加・編集の設計範囲（Issue #18）
+
+[次の合意範囲](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)は停止中Collection配下の対象名・任意の補足指示の追加と編集である。対象は情報源なしでも保存できる。現在設定の変更で作成済みJob・Reportを変更しない。Collection全体の版で本体・対象への先行更新を検出する。競合時は本体・対象の下書きを保持して保存を止め、最新値から編集し直す。項目単位の自動統合はしない。同一保存要求の再送で対象を重複作成しない。
+
+保存単位は本体と対象の変更を一括とする方式に合意した。新規対象は有効として追加し、既存対象の有効状態は維持する。対象の有効状態の切替操作とCollectionの有効化は今回の範囲に含めない。停止中Collectionでは有効対象があっても新規生成しない。
+
+## 情報源追加・編集（Issue #18）
+
+情報源の追加/編集もCollection全体の変更とする。本体・対象と一括確定し、同一要求の再試行で重複作成しない。保存済み対象への所属を必須とし、情報源移動・削除は今回扱わない。0件・同一URLを許可し、作成済み履歴/snapshotを変更しない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+## Schedule一括保存への拡張
+
+停止中CollectionのScheduleを追加・cron式編集できる。最大1件、省略は維持。未設定の空欄はScheduleなしで本体等を保存し、既存式の空欄は削除の意味にしない。本人所有Collectionへの所属と停止状態・全体版を検証し、設定一式は部分保存しない。Scheduleへの先行保存と本体等への先行保存は互いに全体競合として扱う。
+
+日本時間固定・祝日除外なし。保存では生成を開始せず、作成済Jobのscheduled_at/input_snapshot・Reportを変更しない。削除・有効化は後続、次回予定表示は#34、予定計算とJob生成は#19。cronの受理構文と日/曜日の意味は[更新API](API仕様/patch-api-collections.md#schedule追加編集)、利用者向け仕様は[正本](product-definition.md#停止中collectionのschedule追加編集代理判断)を参照する。
+
+## 保存済みReportの安全なMarkdown表示
+
+Reportは生成時に組立て済みの完成本文を保持する読み取り専用の結果。Markdown閲覧は表示方法だけの変更で、AI断片の許可構文・保存時検証・構造化データ・履歴を変更しない。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+成功した保存済みReportだけを予定時刻とReport IDの降順で段階的に読む。cursorは表示境界であり所有権/スナップショットを表さない。Collection削除後もJobの所有者で履歴を認可し、追加取得で本文/予定時刻/保存履歴を変えない。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+予定・結果の一覧は保存済みGenerationJobを起点にする。予定時刻とJob IDの降順に読み、日本時間の日付でまとめる。状態はJobの4状態を使い、成功だけReport参照を持つ。閲覧でJob/Attempt/Reportを作成・変更せず、現在cronから存在しないJobを復元しない。Collection削除後もJobの所有者で認可する。
+
+[採用範囲](product-definition.md#日付別の保存済み予定結果一覧issue-88合意済み)と[Job一覧API](API仕様/get-api-generation-jobs.md)を参照する。生成の状態遷移実行は#19のまま。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+現在のCollectionを選ぶ機能は保存済みJobの読み取り範囲を絞るだけで、Jobの状態遷移・所有者・Reportの業務関係を変えない。選択できるのは認証中Userが現在所有するCollectionだけ。Job側の `user_id` と `collection_id` を同時に照合し、所有者と選択先の双方を限定する。削除済みCollectionは現在設定として選択できないが、Job.user_idから認可する既存の日付別履歴では閲覧できる。
+
+有効なCollectionにJobがない場合は空配列を返し、「まだレポートはありません」と表示する。存在しない・他者所有・削除済みCollectionの違いは利用者へ明かさず404とする。ページ移動・手動更新・Collection切替は読み取りだけで、保存済み履歴の状態や順序を変更しない。[正本](product-definition.md#collection別の保存済み予定結果一覧issue-90)を参照する。
+
+## ホームの最新保存済みReport（Issue #92）
+
+ホーム行は認証中Userの現在Collectionを表し、表示名・順序は現在のCollection設定から読む。削除済みCollectionは行に含めない。Reportへのリンク先は同じUser・同じCollectionに属する保存済み成功Reportのうち、`scheduled_at DESC, report.id DESC` で先頭のものとする。ホーム行の現在名とReport詳細のJob時点の履歴名は異なる責務として保持する。
+
+保存済みReportがないCollectionも現在設定として表示し、「まだレポートはありません」と案内する。ホームの読み取り・更新でJob/Attempt/ReportやCollection設定を作成・変更せず、現在ScheduleからJobを推定・復元しない。[正本](product-definition.md#ホームの最初の経路issue-92)を参照する。
+
+## ホームの本日予定状態（Issue #94）
+
+ホームの補助状態は、サーバーが一度確定したJST日付に含まれる保存済みGenerationJobのstatus件数である。対象区間はJST当日00:00以上、翌日00:00未満。Collectionごとにqueued/running/succeeded/failedを数え、対象Jobが0件なら状態欄を表示しない。0件から異常・未実行・Reportなしを推定しない。最新成功Reportへのリンクと「まだレポートはありません」は既存の独立した業務状態を表す。
+
+件数はJob.statusから直接集計し、AttemptやReportの存在を条件にしない。Jobは認証Userと現在Collectionの双方に属するものに限る。閲覧で状態遷移や履歴を変更せず、生成予定も復元しない。[正本](product-definition.md#ホームの本日予定状態issue-94)を参照する。
+
+## Collection表示順の一括変更（Issue #96）
+
+表示順変更は認証中Userの現在Collection全体を対象とする。入力は変更前の順序と各Collection全体versionを前提条件として持ち、保存時に現在の完全な本人順と照合する。順序・構成・版のいずれかが変わっていれば競合とし、作成・編集・削除の結果を欠落/復活させない。Collection変更と同じUser advisory transaction lock namespace 18を共有する。削除経路を追加するときもこのlockと全体version規則を守る。
+
+要求番号と正規化入力digestを本人単位で記録し、初回の全行更新・版増加・要求記録を同一transactionで確定する。同じ番号/同じ内容の再送は成功済みの同一操作として応答し、異なる内容は競合とする。対象変更行のdisplay_order・version・updated_atだけを更新し、Report、Job、Attempt、snapshot、他User、設定の他項目は変更しない。入力不正・前提不一致・DB書込失敗では全行rollbackし、部分順序を残さない。
+
+順序変更前に成功した既存作成/更新要求のdigestとreplay記録はそのまま維持する。既存更新の同一要求再送は、通常どおり保存済み結果を返して現在の順序を戻さない。順序変更で版が進んだ後の古い版を使う新しい編集要求は競合として拒否する。
+
+表示順は一意制約を置かず、同値の場合はID昇順を保つ。0/1件では有効な保存を許し、不要なversion増加はしない。現在版を持つCollectionだけをversion対象とし、未認証・CSRF・不正ID・他User/不存在の結果で所有情報を区別しない。要求記録・画面下書きは個人情報や設定本文を複製せず、画面離脱/認証変更で下書きを消去する。[正本](product-definition.md#ホームからのcollection表示順変更issue-96)を参照する。

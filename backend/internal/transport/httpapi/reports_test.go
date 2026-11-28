@@ -18,9 +18,9 @@ type reportResult struct {
 	err   error
 }
 
-func (s *reportResult) List(context.Context, [32]byte) ([]domain.ReportSummary, error) {
+func (s *reportResult) List(context.Context, [32]byte, string) (domain.ReportPage, error) {
 	s.calls++
-	return []domain.ReportSummary{}, s.err
+	return domain.ReportPage{Reports: []domain.ReportSummary{}}, s.err
 }
 func (s *reportResult) Get(context.Context, [32]byte, string) (domain.Report, error) {
 	s.calls++
@@ -41,6 +41,8 @@ func TestReportHTTPBoundary(t *testing.T) {
 		{"duplicate cookie", valid + "; " + valid, "/api/reports", nil, 401, "unauthenticated"},
 		{"invalid cookie", SessionCookieName + "=invalid", "/api/reports", nil, 401, "unauthenticated"},
 		{"unknown session", valid, "/api/reports", domain.ErrUnauthenticated, 401, "unauthenticated"},
+		{"unknown session invalid query", valid, "/api/reports?cursor=%xx", domain.ErrUnauthenticated, 401, "unauthenticated"},
+		{"invalid cursor", valid, "/api/reports?cursor=private-cursor", domain.ErrReportCursor, 400, "invalid_request"},
 		{"not found", valid, "/api/reports/01ARZ3NDEKTSV4RRFFQ69G5FAV", domain.ErrResourceNotFound, 404, "not_found"},
 		{"invalid ID", valid, "/api/reports/invalid", domain.ErrInvalidIdentifier, 400, "invalid_request"},
 		{"DB failure", valid, "/api/reports", errors.New("private SQL connection data"), 500, "internal_error"},
@@ -60,7 +62,7 @@ func TestReportHTTPBoundary(t *testing.T) {
 			if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.code) || w.Header().Get("Cache-Control") != "no-store" {
 				t.Fatal("wrong resource classification")
 			}
-			if strings.Contains(w.Body.String(), "private SQL") || strings.Contains(logs.String(), "private SQL") || strings.Contains(logs.String(), valid) {
+			if strings.Contains(w.Body.String(), "private SQL") || strings.Contains(logs.String(), "private SQL") || strings.Contains(logs.String(), valid) || strings.Contains(logs.String(), "private-cursor") {
 				t.Fatal("private value exposed")
 			}
 			if tc.name == "no cookie" || tc.name == "duplicate cookie" || tc.name == "invalid cookie" {
@@ -68,7 +70,7 @@ func TestReportHTTPBoundary(t *testing.T) {
 					t.Fatal("invalid Cookie reached service")
 				}
 			}
-			if tc.name == "empty list" && !strings.Contains(w.Body.String(), `"reports":[]`) {
+			if tc.name == "empty list" && (!strings.Contains(w.Body.String(), `"reports":[]`) || !strings.Contains(w.Body.String(), `"next_cursor":null`)) {
 				t.Fatal("empty result must be array")
 			}
 		})

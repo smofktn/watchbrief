@@ -7,10 +7,16 @@ import { createAppRouter } from '../src/router'
 
 const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const otherId = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
+const collectionID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAX'
 const summary = { id, name: '架空の設定', enabled: false, display_order: 0 }
 const collection = { ...summary, version: '1', research_instruction: '', initial_lookback_mode: 'ai', initial_lookback_days: null, schedule: null, targets: [] }
 const report = { id, collection_name: '架空レポート', scheduled_at: '2026-01-02T00:00:00Z', generated_at: '2026-01-02T00:00:04Z', body_markdown: '<script>bad()</script><img src=x onerror=bad()>', summary_markdown: '', updates_started_at: '2026-01-01T00:00:00Z', updates_ended_at: '2026-01-02T00:00:02Z' }
 const response = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+const zeroHomeCounts = { queued: 0, running: 0, succeeded: 0, failed: 0 }
+const home = (collections: Array<{ id: string, name: string, latest_report_id: string | null, version?: string, today_job_counts?: typeof zeroHomeCounts }>, as_of_date = '2026-11-27') => response({
+  as_of_date,
+  collections: collections.map(collection => ({ today_job_counts: zeroHomeCounts, version: '1', ...collection })),
+})
 const unauthenticated = () => response({ error: { code: 'unauthenticated' } }, 401)
 const me = () => response({ login_id: 'fictional_user' })
 const deferred = <T>() => {
@@ -50,6 +56,26 @@ afterEach(() => {
 })
 
 describe('real router and login form', () => {
+  test('protected home deep URL restores after login and remains a separate screen from /me', async () => {
+    let authenticated = false
+    const { app, router, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null, 204) }
+      if (path === '/api/home') { return home([]) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Fhome')
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe('/home')
+    expect(app.text()).toContain('ホーム')
+    expect(app.text()).toContain('fictional_user')
+    await router.push('/me')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/me')
+    expect(app.text()).toContain('本人情報')
+    expect(fetch.mock.calls.some(([path]) => path === '/api/home')).toBe(true)
+  })
+
   test('protected direct URL logs in and returns to the same resource; all requests use private same-origin policy', async () => {
     let authenticated = false
     const { app, router, fetch } = await start(`/collections/${id}`, (path) => {
@@ -135,10 +161,317 @@ describe('real router and login form', () => {
   })
 })
 
+describe('home Collection report links', () => {
+  test('shows current Collection names in order and links only saved successful Reports', async () => {
+    const latestID = otherId
+    const historyReport = { ...report, id: latestID, collection_name: '保存時の履歴名' }
+    const collections = [
+      { id, name: '現在の改名後Collection', latest_report_id: latestID, today_job_counts: { queued: 1, running: 1, succeeded: 2, failed: 1 } },
+      { id: collectionID2, name: '未生成Collection', latest_report_id: null },
+    ]
+    const { app, router, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home(collections) }
+      if (path === `/api/reports/${latestID}`) { return response(historyReport) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    const homeLinks = app.findAll('main section[aria-labelledby="home-title"] li a')
+    expect(app.text()).toContain('現在の改名後Collection')
+    expect(app.text()).toContain('未生成Collection')
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(app.text()).toContain('本日（2026-11-27 JST）：待機中 1件、実行中 1件、成功 2件、失敗 1件')
+    expect(app.findAll('main section[aria-labelledby="home-title"] li .home-today-status')).toHaveLength(1)
+    expect(app.findAll('main section[aria-labelledby="home-title"] li')[1]?.find('.home-today-status').exists()).toBe(false)
+    expect(homeLinks).toHaveLength(1)
+    expect(homeLinks[0]!.attributes('href')).toBe(`/reports/${latestID}`)
+    await homeLinks[0]!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/${latestID}`)
+    expect(app.text()).toContain('保存時の履歴名')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/home')
+  })
+
+  test('updates from the first page and distinguishes an empty Collection list', async () => {
+    let reads = 0
+    const { app, fetch } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        reads++
+        return home(reads === 1
+          ? [{ id, name: '更新前', latest_report_id: otherId, today_job_counts: { queued: 1, running: 0, succeeded: 0, failed: 0 } }]
+          : [{ id, name: '更新後', latest_report_id: null, today_job_counts: { queued: 0, running: 0, succeeded: 0, failed: 2 } }])
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.text()).toContain('更新前')
+    await click('更新')
+    expect(app.text()).not.toContain('更新前')
+    expect(app.text()).toContain('更新後')
+    expect(app.text()).toContain('失敗 2件')
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(app.findAll('main section[aria-labelledby="home-title"] a[href^="/reports/"]')).toHaveLength(0)
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/home')).toHaveLength(2)
+  })
+
+  test('empty Home and failed refresh do not keep old Collection or Report links', async () => {
+    let reads = 0
+    const { app } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        reads++
+        return reads === 1 ? home([{ id, name: '古いCollection', latest_report_id: otherId }]) : response({ error: { code: 'internal_error' } }, 500)
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.text()).toContain('古いCollection')
+    await click('更新')
+    expect(app.find('[role=alert]').exists()).toBe(true)
+    expect(app.text()).not.toContain('古いCollection')
+    expect(app.findAll('main section[aria-labelledby="home-title"] a[href^="/reports/"]')).toHaveLength(0)
+  })
+
+  test('empty Home shows a fixed empty Collection message', async () => {
+    const { app } = await start('/home', path => path === '/api/me' ? me() : home([]))
+    expect(app.text()).toContain('表示できるコレクションはありません')
+  })
+
+  test('a delayed old Home response cannot restore data after logout', async () => {
+    const oldHome = deferred<Response>()
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return oldHome.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('ログアウト')
+    expect(router.currentRoute.value.path).toBe('/login')
+    oldHome.resolve(home([{ id, name: 'logout後の古いCollection', latest_report_id: otherId }]))
+    await flushPromises()
+    expect(app.find('#password').exists()).toBe(true)
+    expect(app.text()).not.toContain('logout後の古いCollection')
+  })
+
+  test('a delayed Home response cannot replace the new response after route and identity recheck', async () => {
+    const firstHome = deferred<Response>()
+    let homeReads = 0
+    let identityReads = 0
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { identityReads++; return me() }
+      if (path === '/api/home') {
+        homeReads++
+        return homeReads === 1 ? firstHome.promise : home([{ id: collectionID2, name: '新しいHome', latest_report_id: null }])
+      }
+      if (path === '/api/reports') { return response({ reports: [], next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await router.push('/reports')
+    await flushPromises()
+    await router.push('/home')
+    await flushPromises()
+    expect(identityReads).toBeGreaterThanOrEqual(3)
+    expect(app.text()).toContain('新しいHome')
+    firstHome.resolve(home([{ id, name: '古いHome', latest_report_id: otherId }]))
+    await flushPromises()
+    expect(app.text()).toContain('新しいHome')
+    expect(app.text()).not.toContain('古いHome')
+  })
+
+  test('home reorder moves real rows, cancels safely, saves once, and is visible in settings and after reload', async () => {
+    const key = '00112233-4455-4677-8899-aabbccddeeff'
+    vi.stubGlobal('crypto', { randomUUID: () => key })
+    const first = { id, name: 'Collection A', version: '1', latest_report_id: otherId }
+    const second = { id: collectionID2, name: 'Collection B', version: '2', latest_report_id: null }
+    let order = [first, second]
+    const { app, router, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home(order) }
+      if (path === '/api/collections/order') {
+        const input = JSON.parse(options.body as string) as { expected: Array<{ id: string, version: string }>, ordered_ids: string[] }
+        expect(input.expected).toEqual([{ id, version: '1' }, { id: collectionID2, version: '2' }])
+        expect(input.ordered_ids).toEqual([collectionID2, id])
+        expect(options.method).toBe('PUT')
+        expect(new Headers(options.headers).get('Idempotency-Key')).toBe(key)
+        order = [second, first]
+        return response(null, 204)
+      }
+      if (path === '/api/collections') {
+        return response({ collections: order.map((row, index) => ({ id: row.id, name: row.name, enabled: index === 0, display_order: index })) })
+      }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    const rowNames = () => app.findAll('.home-collection h3').map(row => row.text())
+    expect(rowNames()).toEqual(['Collection A', 'Collection B'])
+    await click('表示順を変更')
+    expect(app.find('button[aria-label="Collection Aを上へ"]').attributes('disabled')).toBeDefined()
+    expect(app.find('button[aria-label="Collection Bを下へ"]').attributes('disabled')).toBeDefined()
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    await click('キャンセル')
+    expect(rowNames()).toEqual(['Collection A', 'Collection B'])
+    await click('表示順を変更')
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    await click('順序を保存')
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections/order')).toHaveLength(1)
+    await router.push('/collections')
+    await flushPromises()
+    expect(app.text().indexOf('Collection B')).toBeLessThan(app.text().indexOf('Collection A'))
+    await router.push('/home')
+    await flushPromises()
+    expect(rowNames()).toEqual(['Collection B', 'Collection A'])
+    await click('ログアウト')
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  test('a confirmed order conflict is inspected and explicitly rebased with a new request key', async () => {
+    const firstKey = '00112233-4455-4677-8899-aabbccddeeff'
+    const nextKey = '00112233-4455-4677-8899-aabbccddeef0'
+    let keys: string[] = []
+    let writes = 0
+    const original = [
+      { id, name: 'Collection A', version: '1', latest_report_id: null },
+      { id: collectionID2, name: 'Collection B', version: '1', latest_report_id: null },
+    ]
+    vi.stubGlobal('crypto', { randomUUID: () => writes === 0 ? firstKey : nextKey })
+    const { app, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home(original) }
+      if (path === '/api/collections/order') {
+        keys.push(new Headers(options.headers).get('Idempotency-Key') ?? '')
+        writes++
+        return writes === 1 ? response({ error: { code: 'order_conflict' } }, 409) : response(null, 204)
+      }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await app.get('button[aria-label="Collection Aを下へ"]').trigger('click')
+    await click('順序を保存')
+    expect(app.text()).toContain('下書きを残したまま最新状態を確認してください')
+    expect(app.text()).not.toContain('同じ内容で再試行')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('Collection A')
+    await click('最新状態を確認して下書きを維持')
+    expect(app.findAll('.home-collection h3').map(row => row.text())).toEqual(['Collection B', 'Collection A'])
+    await click('順序を保存')
+    expect(keys).toEqual([firstKey, nextKey])
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections/order')).toHaveLength(2)
+  })
+
+  test('latest conflict confirmation blocks duplicate reads, reports its timeout, and discards stale candidates', async () => {
+    vi.useFakeTimers()
+    const original = [{ id, name: 'Collection A', version: '1', latest_report_id: null }]
+    let homeReads = 0
+    const { app, fetch } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') {
+        homeReads++
+        if (homeReads === 1) { return home(original) }
+        if (homeReads === 2) {
+          return new Promise((_resolve, reject) => {
+            options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+          })
+        }
+        return home([{ ...original[0]!, name: '最新の架空Collection', version: '2' }])
+      }
+      if (path === '/api/collections/order') { return response({ error: { code: 'order_conflict' } }, 409) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    const refresh = app.find('button[aria-label="最新状態を確認"]')
+    await refresh.trigger('click')
+    await refresh.trigger('click')
+    await flushPromises()
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/home')).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(app.text()).toContain('接続できません')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('最新の架空Collection')
+    expect(app.text()).not.toContain('同じ内容で再試行')
+  })
+
+  test('latest conflict treats an HTTP server failure as a fixed application error', async () => {
+    let reads = 0
+    const { app } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return ++reads === 1 ? home([{ id, name: 'Collection A', latest_report_id: null }]) : response({ error: { code: 'internal_error' } }, 500) }
+      if (path === '/api/collections/order') { return response({ error: { code: 'order_conflict' } }, 409) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    await click('最新状態を確認')
+    expect(app.text()).toContain('処理に失敗しました。時間をおいて再度お試しください')
+    expect(app.text()).not.toContain('接続できません')
+    expect(app.text()).not.toContain('最新状態を確認して下書きを維持')
+  })
+
+  test('an unknown save retries the exact same body/key; a malformed 401 remains visible and locked', async () => {
+    const key = '00112233-4455-4677-8899-aabbccddeeff'
+    vi.stubGlobal('crypto', { randomUUID: () => key })
+    let failFirst = true
+    const writes: Array<{ body: string, key: string }> = []
+    const { app, router } = await start('/home', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') {
+        writes.push({ body: options.body as string, key: new Headers(options.headers).get('Idempotency-Key') ?? '' })
+        if (failFirst) { failFirst = false; throw new Error('network down') }
+        return response(null, 204)
+      }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    expect(app.text()).toContain('保存結果が不明')
+    await click('同じ内容で再試行')
+    expect(writes).toHaveLength(2)
+    expect(writes[0]).toEqual(writes[1])
+    expect(router.currentRoute.value.path).toBe('/home')
+  })
+
+  test('a noncanonical delayed 401 is not silently treated as idle after logout', async () => {
+    const saveResponse = deferred<Response>()
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') { return saveResponse.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    await click('ログアウト')
+    saveResponse.resolve(response({ error: { code: 'unauthenticated' } }, 401))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(app.findAll('.home-collection')).toHaveLength(0)
+    expect(app.text()).not.toContain('Collection A')
+  })
+
+  test('an invalid 401 does not silently unlock the order form', async () => {
+    const { app, router } = await start('/home', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/home') { return home([{ id, name: 'Collection A', version: '1', latest_report_id: null }]) }
+      if (path === '/api/collections/order') { return response({ error: { code: 'unexpected' } }, 401) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('表示順を変更')
+    await click('順序を保存')
+    expect(router.currentRoute.value.path).toBe('/home')
+    expect(app.text()).toContain('認証応答を確認できません')
+    expect(app.find('button').text()).not.toBe('順序を保存')
+    expect(app.text()).toContain('同じ内容で再試行')
+  })
+})
+
 describe('resources, retry, and rendering', () => {
   test.each([
     ['/collections', { collections: [] }, 'コレクションはありません。'],
-    ['/reports', { reports: [] }, '保存済みReportはありません。'],
+    ['/reports', { reports: [], next_cursor: null }, '保存済みReportはありません。'],
     [`/collections/${id}`, collection, 'ウォッチ対象はありません。'],
   ])('renders %s empty states', async (path, body, text) => {
     const { app } = await start(path, (url) => url === '/api/me' ? me() : response(body))
@@ -146,7 +479,7 @@ describe('resources, retry, and rendering', () => {
   })
   test.each([
     ['/collections', { collections: [summary] }, '架空の設定', `/collections/${id}`, collection],
-    ['/reports', { reports: [report] }, '架空レポート', `/reports/${id}`, report],
+    ['/reports', { reports: [report], next_cursor: null }, '架空レポート', `/reports/${id}`, report],
   ])('list %s links to detail through router', async (path, list, text, target, detail) => {
     const { app, router } = await start(path, (url) => url === '/api/me' ? me() : response(url === `/api${path}` ? list : detail))
     await app.get(`a[href="${target}"]`).trigger('click')
@@ -154,11 +487,11 @@ describe('resources, retry, and rendering', () => {
     expect(router.currentRoute.value.path).toBe(target)
     expect(app.get('article').text()).toContain(text)
   })
-  test('report HTML is displayed only as pre text', async () => {
+  test('report HTML remains literal within sanitized Markdown', async () => {
     const { app } = await start(`/reports/${id}`, (url) => url === '/api/me' ? me() : response(report))
-    expect(app.get('pre').text()).toBe(report.body_markdown)
-    expect(app.find('pre script').exists()).toBe(false)
-    expect(app.find('pre img').exists()).toBe(false)
+    expect(app.get('.report-body').text()).toBe(report.body_markdown)
+    expect(app.find('.report-body script').exists()).toBe(false)
+    expect(app.find('.report-body img').exists()).toBe(false)
   })
   test('collection renders nested data and optional settings as plain text', async () => {
     const rich = { ...collection, enabled: true, research_instruction: '<b>plain</b>', initial_lookback_mode: 'days', initial_lookback_days: 7, schedule: { id, cron_expression: '0 9 * * *' }, targets: [
@@ -206,7 +539,7 @@ describe('resources, retry, and rendering', () => {
   test('wrong detail ID in 200 is rejected', async () => {
     const { app } = await start(`/reports/${id}`, (url) => url === '/api/me' ? me() : response({ ...report, id: otherId }))
     expect(app.text()).toContain('処理に失敗しました')
-    expect(app.find('pre').exists()).toBe(false)
+    expect(app.find('.report-body').exists()).toBe(false)
   })
 })
 
@@ -262,7 +595,7 @@ describe('logout and stale response isolation', () => {
     const { app, fetch } = await start('/reports', (url) => url === '/api/me' ? me() : url === '/api/logout' ? response(null, 204) : pending.promise)
     await click('ログアウト')
     expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/reports', '/api/logout'])
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(app.text()).not.toContain('架空レポート')
     expect(app.find('form').exists()).toBe(true)
@@ -272,7 +605,7 @@ describe('logout and stale response isolation', () => {
     const { app, router } = await start('/reports', (url) => url === '/api/me' ? me() : url === '/api/reports' ? pending.promise : response(collection))
     await router.push(`/collections/${id}`)
     await flushPromises()
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(app.text()).toContain('架空の設定')
     expect(app.text()).not.toContain('架空レポート')
@@ -322,15 +655,15 @@ describe('logout and stale response isolation', () => {
       if (url === '/api/me') { return ++identities === 1 ? me() : identity.promise }
       return response({ ...report, id: url.endsWith(otherId) ? otherId : id })
     })
-    expect(app.get('pre').text()).toBe(report.body_markdown)
+    expect(app.get('.report-body').text()).toBe(report.body_markdown)
     await router.push(`/reports/${otherId}`)
     await flushPromises()
-    expect(app.find('pre').exists()).toBe(false)
+    expect(app.find('.report-body').exists()).toBe(false)
     expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', `/api/reports/${id}`, '/api/me'])
     identity.resolve(me())
     await flushPromises()
     expect(fetch.mock.calls.at(-1)![0]).toBe(`/api/reports/${otherId}`)
-    expect(app.find('pre').exists()).toBe(true)
+    expect(app.find('.report-body').exists()).toBe(true)
   })
   test('external navigation crossing an internal authentication redirect invalidates late identity', async () => {
     const identity = deferred<Response>()
@@ -397,7 +730,7 @@ describe('logout and stale response isolation', () => {
     expect(signal?.aborted).toBe(true)
     const calls = fetch.mock.calls.length
     window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
-    pending.resolve(response({ reports: [report] }))
+    pending.resolve(response({ reports: [report], next_cursor: null }))
     await flushPromises()
     expect(fetch.mock.calls.length).toBe(calls)
   })
@@ -698,6 +1031,8 @@ describe('Collection body editing', () => {
     })
     await click('編集')
     await app.get('#collection-name').setValue('遅い応答の入力')
+    await click('対象を追加')
+    await app.get('#target-name-0').setValue('遅い対象の下書き')
     await app.get('form').trigger('submit')
     await app.get('form').trigger('submit')
     expect(writes).toBe(1)
@@ -709,6 +1044,8 @@ describe('Collection body editing', () => {
     await flushPromises()
     expect(app.find('#edit-title').exists()).toBe(false)
     expect(app.text()).not.toContain('遅い応答の入力')
+    expect(app.find('#target-name-0').exists()).toBe(false)
+    expect(app.text()).not.toContain('遅い対象の下書き')
     expect(localStorage.length + sessionStorage.length).toBe(0)
   })
   test('enabled collection has no edit action', async () => {
@@ -738,4 +1075,997 @@ test('editing timeout aborts only its request and preserves the exact retry; inc
   expect(attempts[1].headers).toEqual(attempts[0].headers)
   expect(app.find('#edit-title').exists()).toBe(true)
   expect(app.text()).toContain('保存結果を確認できません')
+})
+
+describe('Collection and target atomic editing', () => {
+  const existing = { id: otherId, name: '既存対象', instruction: '既存指示', enabled: false, display_order: 9, sources: [] }
+  test('validates targets, omits untouched rows, cancels only new drafts and submits one combined request', async () => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({ id, version: '2' }) }
+      return response({ ...collection, targets: [existing] })
+    })
+    await click('編集')
+    await click('対象を追加')
+    await click('保存')
+    expect(attempts).toHaveLength(0)
+    expect(document.activeElement?.id).toBe('target-name-1')
+    await click('追加を取り消す')
+    expect(app.findAll('button').filter(b => b.text() === '追加を取り消す')).toHaveLength(0)
+    await app.get('#collection-name').setValue('本体も変更')
+    await app.get('#target-instruction-0').setValue('変更指示')
+    await click('対象を追加')
+    await app.get('#target-name-1').setValue('新規対象')
+    await click('保存')
+    expect(attempts).toHaveLength(1)
+    expect(JSON.parse(attempts[0].body as string)).toMatchObject({ name: '本体も変更', version: '1', targets: [{ id: otherId, name: '既存対象', instruction: '変更指示' }, { id: null, name: '新規対象', instruction: '' }] })
+    expect(app.find('#edit-title').exists()).toBe(false)
+  })
+  test('target retry retains exact payload and key; all fields freeze; conflict compares and resets whole draft', async () => {
+    const attempts: RequestInit[] = []
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') {
+        attempts.push(options)
+        if (attempts.length === 1) { throw new Error('lost response') }
+        return response({ error: { code: 'update_conflict' } }, 409)
+      }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', targets: [{ ...existing, name: reads === 1 ? existing.name : '他タブの対象' }] })
+    })
+    await click('編集')
+    await click('対象を追加')
+    await app.get('#target-name-1').setValue('保持する下書き')
+    await click('保存')
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') !== undefined)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('他タブの対象')
+    expect((app.get('#target-name-1').element as HTMLInputElement).value).toBe('保持する下書き')
+    await click('最新値で編集し直す')
+    expect(app.find('#target-name-1').exists()).toBe(false)
+    expect((app.get('#target-name-0').element as HTMLInputElement).value).toBe('他タブの対象')
+  })
+  test('twenty changes is a per-request limit, and unchanged rows are not sent', async () => {
+    const targets = Array.from({ length: 21 }, (_, i) => ({ ...existing, id: `000000000000000000000000${String(i).padStart(2, '0')}` }))
+    const { app, fetch } = await start(`/collections/${id}`, path => path === '/api/me' ? me() : response({ ...collection, targets }))
+    await click('編集')
+    for (let i = 0; i < 21; i++) { await app.get(`#target-name-${i}`).setValue(`変更${i}`) }
+    await click('保存')
+    expect(app.text()).toContain('変更を減らして保存')
+    expect(fetch.mock.calls.filter(([, opts]) => opts.method === 'PATCH')).toHaveLength(0)
+    await app.get('#target-name-20').setValue(existing.name)
+    await click('保存')
+    const sent = fetch.mock.calls.filter(([, opts]) => opts.method === 'PATCH')
+    expect(JSON.parse(sent[0][1].body as string).targets).toHaveLength(20)
+  })
+})
+
+describe('Collection source atomic editing', () => {
+  const source = { id, name: '<b>既存情報源</b>', url: 'https://EXAMPLE.com/Original', instruction: '' }
+  const target = { id: otherId, name: '保存済み対象', instruction: '', enabled: true, display_order: 0, sources: [source] }
+  test('submits only changed sources with body/target; preserves raw URL and freezes exact retry', async () => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, targets: [target] })
+    })
+    expect(app.find('b').exists()).toBe(false)
+    expect(app.find('a[href^="https:"]').exists()).toBe(false)
+    await click('編集')
+    await app.get('#collection-name').setValue('本体変更')
+    await app.get('#target-name-0').setValue('対象変更')
+    await click('情報源を追加')
+    const names = app.findAll('input[id^="source-name-"]')
+    const urls = app.findAll('input[id^="source-url-"]')
+    await names[1].setValue('新規情報源')
+    await urls[1].setValue('https://EXAMPLE.com/New?q=日本語')
+    await click('保存')
+    const body = JSON.parse(attempts[0].body as string)
+    expect(body).toMatchObject({ name: '本体変更', targets: [{ id: otherId, name: '対象変更' }], sources: [{ id: null, watch_target_id: otherId, name: '新規情報源', url: 'https://EXAMPLE.com/New?q=日本語', instruction: '' }] })
+    expect(body.sources).toHaveLength(1)
+    expect(app.findAll('fieldset').every(field => (field.element as HTMLFieldSetElement).disabled)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+  })
+  test('validates URL, cancels only new sources, and keeps new target restriction visible', async () => {
+    const { app, fetch } = await start(`/collections/${id}`, path => path === '/api/me' ? me() : response({ ...collection, targets: [target] }))
+    await click('編集')
+    expect(app.findAll('button').some(b => b.text() === '情報源の追加を取り消す')).toBe(false)
+    await app.get('input[id^="source-url-"]').setValue('https://user:pass@example.com')
+    await click('保存')
+    expect(app.text()).toContain('認証情報')
+    expect(document.activeElement?.id).toMatch(/^source-url-/)
+    expect(fetch.mock.calls.filter(([,o]) => o.method === 'PATCH')).toHaveLength(0)
+    await click('情報源を追加')
+    await click('情報源の追加を取り消す')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(1)
+    await click('対象を追加')
+    expect(app.text()).toContain('対象を保存してから情報源を追加')
+  })
+  test('conflict preserves sources and compares latest values; explicit restart drops all new drafts', async () => {
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { return response({ error: { code: 'update_conflict' } }, 409) }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', targets: [{ ...target, sources: [{ ...source, name: reads === 1 ? source.name : '先行情報源', url: 'https://example.com/latest' }] }] })
+    })
+    await click('編集')
+    await app.get('input[id^="source-name-"]').setValue('保持する編集')
+    await click('情報源を追加')
+    await app.findAll('input[id^="source-name-"]')[1].setValue('保持する新規')
+    await app.findAll('input[id^="source-url-"]')[1].setValue('https://example.com/new')
+    await click('保存')
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('先行情報源')
+    expect(app.get('.latest-settings').text()).toContain('https://example.com/latest')
+    expect((app.get('input[id^="source-name-"]').element as HTMLInputElement).value).toBe('保持する編集')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(2)
+    await click('最新値で編集し直す')
+    expect(app.findAll('input[id^="source-name-"]')).toHaveLength(1)
+    expect((app.get('input[id^="source-name-"]').element as HTMLInputElement).value).toBe('先行情報源')
+  })
+  test.each(['route', 'cancel', 'logout'])('clears source drafts on %s and discards delayed save', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/logout') { return response(null, 204) }
+      if (options.method === 'PATCH') { return pending.promise }
+      return response({ ...collection, targets: [target] })
+    })
+    await click('編集')
+    await app.get('input[id^="source-name-"]').setValue('遅い情報源下書き')
+    await app.get('form').trigger('submit')
+    await flushPromises()
+    if (action === 'route') { await router.push('/me') } else { await click(action === 'cancel' ? '詳細へ戻る' : 'ログアウト') }
+    await flushPromises()
+    pending.resolve(response({ id, version: '2' }))
+    await flushPromises()
+    expect(app.find('input[id^="source-name-"]').exists()).toBe(false)
+    expect(app.text()).not.toContain('遅い情報源下書き')
+  })
+})
+
+test('untouched legacy source values do not block body/target edits or get resubmitted', async () => {
+  const legacy = { id, name: '旧情報源', url: 'legacy-url-value', instruction: '' }
+  const target = { id: otherId, name: '旧対象', instruction: '', enabled: false, display_order: 0, sources: [legacy] }
+  const attempts: RequestInit[] = []
+  const { app } = await start(`/collections/${id}`, (path, options) => {
+    if (path === '/api/me') { return me() }
+    if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+    return response({ ...collection, targets: [target] })
+  })
+  await click('編集')
+  await app.get('#collection-name').setValue('旧情報源を維持して本体編集')
+  await app.get('#target-name-0').setValue('対象も編集')
+  await click('保存')
+  expect(attempts).toHaveLength(1)
+  expect(JSON.parse(attempts[0].body as string).sources).toBeUndefined()
+})
+
+test('source change count spans all targets and does not cap registration count', async () => {
+  const sources = Array.from({ length: 21 }, (_, i) => ({ id: `000000000000000000000000${String(i).padStart(2, '0')}`, name: '情報源', url: 'https://example.com', instruction: '' }))
+  const target = { id: otherId, name: '対象', instruction: '', enabled: true, display_order: 0, sources }
+  const attempts: RequestInit[] = []
+  const { app } = await start(`/collections/${id}`, (path, options) => {
+    if (path === '/api/me') { return me() }
+    if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+    return response({ ...collection, targets: [target] })
+  })
+  await click('編集')
+  expect(app.findAll('input[id^="source-name-"]')).toHaveLength(21)
+  for (const name of app.findAll('input[id^="source-name-"]')) { await name.setValue('変更') }
+  await click('保存')
+  expect(attempts).toHaveLength(0)
+  expect(app.text()).toContain('情報源の追加・変更は20行まで')
+  await app.findAll('input[id^="source-name-"]')[20].setValue('情報源')
+  await click('保存')
+  expect(JSON.parse(attempts[0].body as string).sources).toHaveLength(20)
+  expect(JSON.parse(attempts[0].body as string).targets).toBeUndefined()
+})
+
+describe('Schedule integrated Collection editing', () => {
+  test.each([null, { id: otherId, cron_expression: 'legacy-unparsed-expression' }])('omits unchanged unset or legacy Schedule', async schedule => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, schedule })
+    })
+    await click('編集')
+    await app.get('#collection-name').setValue('本体だけ変更')
+    await click('保存')
+    expect(attempts).toHaveLength(1)
+    expect(JSON.parse(attempts[0].body as string).schedule).toBeUndefined()
+  })
+  test.each([null, { id: otherId, cron_expression: '0 7 * * *' }])('adds/edits Schedule with exact uncertain retry and input locking', async schedule => {
+    const attempts: RequestInit[] = []
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { attempts.push(options); return response({}, 500) }
+      return response({ ...collection, schedule })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 25 * * *')
+    await click('保存')
+    expect(attempts).toHaveLength(0)
+    expect(document.activeElement?.id).toBe('schedule-cron')
+    await app.get('#schedule-cron').setValue(' 0 7,19 * * * ')
+    await app.get('#collection-name').setValue('本体も同時に')
+    await click('保存')
+    expect(JSON.parse(attempts[0].body as string)).toMatchObject({ name: '本体も同時に', schedule: { id: schedule?.id ?? null, cron_expression: ' 0 7,19 * * * ' } })
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') !== undefined)).toBe(true)
+    await click('同じ内容で再試行')
+    expect(attempts[1].body).toBe(attempts[0].body)
+    expect(attempts[1].headers).toEqual(attempts[0].headers)
+  })
+  test('rejects empty existing Schedule and allows correction after definite 400', async () => {
+    let calls = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { ++calls; return response({ error: { code: 'invalid_request' } }, 400) }
+      return response({ ...collection, schedule: { id: otherId, cron_expression: '0 7 * * *' } })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('')
+    await click('保存')
+    expect(calls).toBe(0)
+    expect(app.get('#schedule-error').text()).toContain('空にできません')
+    await app.get('#schedule-cron').setValue('0 8 * * *')
+    await click('保存')
+    expect(calls).toBe(1)
+    expect(app.findAll('fieldset').every(field => field.attributes('disabled') === undefined)).toBe(true)
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 8 * * *')
+  })
+  test('compares new server Schedule while preserving the whole draft and restarts explicitly', async () => {
+    let reads = 0
+    const { app } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (options.method === 'PATCH') { return response({ error: { code: 'update_conflict' } }, 409) }
+      return response({ ...collection, version: ++reads === 1 ? '1' : '2', schedule: reads === 1 ? null : { id: otherId, cron_expression: '0 9 * * *' } })
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 8 * * *')
+    await app.get('#collection-name').setValue('保持する本体')
+    await click('対象を追加')
+    await app.get('#target-name-0').setValue('保持する新規対象')
+    await click('保存')
+    await click('最新値を確認')
+    expect(app.get('.latest-settings').text()).toContain('0 9 * * *')
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 8 * * *')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe('保持する本体')
+    expect(app.find('#target-name-0').exists()).toBe(true)
+    await click('最新値で編集し直す')
+    expect((app.get('#schedule-cron').element as HTMLInputElement).value).toBe('0 9 * * *')
+    expect((app.get('#collection-name').element as HTMLInputElement).value).toBe(collection.name)
+    expect(app.find('#target-name-0').exists()).toBe(false)
+    expect(app.text()).toContain('登録済みの式を空欄にして削除することはできません')
+  })
+  test.each(['route', 'cancel', 'logout', 'expire'])('clears Schedule on %s and discards late save', async action => {
+    const pending = deferred<Response>()
+    let patches = 0
+    const { app, router } = await start(`/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/logout') { return response(null, 204) }
+      if (options.method === 'PATCH') { ++patches; return pending.promise }
+      return response(collection)
+    })
+    await click('編集')
+    await app.get('#schedule-cron').setValue('0 11 * * *')
+    await app.get('form').trigger('submit')
+    await flushPromises()
+    if (action === 'route') { await router.push('/me') }
+    else if (action !== 'expire') { await click(action === 'cancel' ? '詳細へ戻る' : 'ログアウト') }
+    pending.resolve(action === 'expire' ? unauthenticated() : response({ id, version: '2' }))
+    await flushPromises()
+    expect(patches).toBe(1)
+    expect(app.find('#schedule-cron').exists()).toBe(false)
+    expect(app.text()).not.toContain('0 11 * * *')
+  })
+})
+
+describe('derived Report Markdown follows resource and authentication clearing', () => {
+  const richReport = { ...report, body_markdown: '# 非公開本文\n\n**強調** [出典](https://example.com)' }
+  test('logout start clears generated HTML even while logout fails, and it does not reappear', async () => {
+    const logout = deferred<Response>()
+    const { app } = await start(`/reports/${id}`, (path) => path === '/api/me' ? me() : path === '/api/logout' ? logout.promise : response(richReport))
+    expect(app.get('.report-body h1').text()).toBe('非公開本文')
+    expect(app.get('.report-body strong').text()).toBe('強調')
+    await click('ログアウト')
+    expect(app.find('.report-body').exists()).toBe(false)
+    logout.resolve(response({}, 500))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(app.text()).not.toContain('非公開本文')
+  })
+  test('identity recheck clears old HTML; a 401 from Report read erases it and safely redirects', async () => {
+    let reads = 0
+    const delayed = deferred<Response>()
+    const { app, router } = await start(`/reports/${id}`, path => path === '/api/me' ? me() : ++reads === 1 ? response(richReport) : delayed.promise)
+    expect(app.find('.report-body a').exists()).toBe(true)
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    delayed.resolve(unauthenticated())
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to='+encodeURIComponent(`/reports/${id}`))
+    expect(app.text()).not.toContain('非公開本文')
+  })
+  test.each(['route', 'logout'])('late Report response after %s cannot create derived HTML', async action => {
+    const delayed = deferred<Response>()
+    const { app, router } = await start(`/reports/${id}`, path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : delayed.promise)
+    if (action === 'route') { await router.push('/me') } else { await click('ログアウト') }
+    delayed.resolve(response(richReport))
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(false)
+    expect(app.text()).not.toContain('非公開本文')
+  })
+})
+
+describe('Report cursor continuation', () => {
+  // Distinct PG microseconds inside one millisecond, with the opposite ID order.
+  const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
+  const first = { reports: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
+  const last = { reports: rows.slice(30), next_cursor: null }
+  const count = () => wrapper!.findAll('a[href^="/reports/"]').filter(a => a.attributes('href') !== '/reports/daily' && !a.attributes('href')!.startsWith('/reports/collections')).length
+  test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
+    const { app, router, fetch } = await start('/reports', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/reports' ? response(first) : response({ ...report, id: rows[0].id }))
+    expect(count()).toBe(30)
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(app.text()).toContain('すべての保存済みReportを表示しました')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/reports?cursor=opaque_cursor_A')
+    await router.push('/reports/'+rows[0].id)
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(true)
+    await router.push('/reports')
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.find('.report-body').exists()).toBe(false)
+  })
+  test.each([
+    response({}, 500), response({}), response({ reports: [rows[0]], next_cursor: null }),
+    response({ reports: [...last.reports].reverse(), next_cursor: null }),
+    response({ reports: last.reports, next_cursor: 'unexpected_cursor' }),
+    response({ reports: last.reports }),
+    response({ reports: first.reports, next_cursor: first.next_cursor }),
+  ])('failed/malformed/overlapping/reversed continuation keeps old items and cursor for retry', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? bad : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A', '/api/reports?cursor=opaque_cursor_A'])
+  })
+  const older = (day: string, start: number) => Array.from({ length: 30 }, (_, i) => ({ ...report, id: String(start+i).padStart(26, '0'), collection_name: '追加ページ'+(start+i), scheduled_at: day+'T00:00:00.'+String(999999-i).padStart(6, '0')+'Z' }))
+  test.each([
+    { reports: [rows[30], rows[30]], next_cursor: null },
+    { reports: [{ ...rows[0], id: '00000000000000000000000999' }], next_cursor: null },
+    { reports: older('2026-03-31',100), next_cursor: first.next_cursor },
+  ])('loadMore rejects duplicate IDs, new-ID cross-page reversal and repeated cursor without consuming the boundary', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? response(bad) : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A','/api/reports?cursor=opaque_cursor_A'])
+  })
+  test('loadMore rejects an older page whose next cursor cycles to a previously consumed cursor, then retries B', async () => {
+    const second = { reports: older('2026-03-31',100), next_cursor: 'opaque_cursor_B' }
+    const third = older('2026-03-30',200)
+    let attempts = 0
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : !path.includes('?') ? response(first) : response(++attempts === 1 ? second : attempts === 2 ? { reports: third, next_cursor: 'opaque_cursor_A' } : { reports: third, next_cursor: null }))
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(90)
+    expect(app.text()).toContain('すべての保存済みReportを表示しました')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A','/api/reports?cursor=opaque_cursor_B','/api/reports?cursor=opaque_cursor_B'])
+  })
+  test('double operation starts one continuation, with an unchanged opaque cursor', async () => {
+    const pending = deferred<Response>()
+    const { app, fetch } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?'))).toHaveLength(1)
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('続きを読み込んでいます')
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(35)
+  })
+  test('continuation 401 clears all rows/cursor and returns to /reports after login', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path.includes('?') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(0)
+    expect(app.text()).not.toContain('架空ページ')
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports')
+    expect(app.findAll('button').some(button => button.text() === 'もっと読む')).toBe(false)
+  })
+  test.each(['route', 'logout', 'identity'])('late continuation after %s does not resurrect rows or cursor', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    if (action === 'route') { await router.push('/me') }
+    else if (action === 'logout') { await click('ログアウト') }
+    else { window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })) }
+    await flushPromises()
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(action === 'identity' ? 30 : 0)
+    expect(app.text()).not.toContain('架空ページ34')
+  })
+  test('timeout keeps already shown rows and retries the same cursor', async () => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (!path.includes('?')) { return response(first) }
+      if (++attempts > 1) { return response(last) }
+      return new Promise<Response>((_, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await vi.advanceTimersByTimeAsync(15001)
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/reports?cursor=opaque_cursor_A', '/api/reports?cursor=opaque_cursor_A'])
+  })
+})
+
+describe('daily Job cursor continuation', () => {
+  // Distinct PG microseconds inside one millisecond, with the opposite ID order.
+  const rows = Array.from({ length: 35 }, (_, i) => ({ ...report, status: 'succeeded', report_id: id, id: String(i).padStart(26, '0'), collection_name: '架空ページ'+i, scheduled_at: '2026-04-01T00:00:00.'+String(35-i).padStart(6, '0')+'Z' }))
+  const first = { generation_jobs: rows.slice(0, 30), next_cursor: 'opaque_cursor_A' }
+  const last = { generation_jobs: rows.slice(30), next_cursor: null }
+  const count = () => wrapper!.findAll('.daily-job').length
+  test('30 then 5 without duplicates; leaving and returning resets the first page', async () => {
+    const { app, router, fetch } = await start('/reports/daily', (path) => path === '/api/me' ? me() : path.includes('?cursor=') ? response(last) : path === '/api/generation-jobs' ? response(first) : response({ ...report, status: 'succeeded', report_id: id, id: rows[0].id }))
+    expect(count()).toBe(30)
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(app.text()).toContain('すべての保存済み予定・結果を表示しました')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/api/generation-jobs?cursor=opaque_cursor_A')
+    await router.push('/reports/'+rows[0].id)
+    await flushPromises()
+    expect(app.find('.report-body').exists()).toBe(true)
+    await router.push('/reports/daily')
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.find('.report-body').exists()).toBe(false)
+  })
+  test.each([
+    response({}, 500), response({}), response({ generation_jobs: [rows[0]], next_cursor: null }),
+    response({ generation_jobs: [...last.generation_jobs].reverse(), next_cursor: null }),
+    response({ generation_jobs: last.generation_jobs, next_cursor: 'unexpected_cursor' }),
+    response({ generation_jobs: last.generation_jobs }),
+    response({ generation_jobs: first.generation_jobs, next_cursor: first.next_cursor }),
+  ])('failed/malformed/overlapping/reversed continuation keeps old items and cursor for retry', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? bad : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A', '/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+  const older = (day: string, start: number) => Array.from({ length: 30 }, (_, i) => ({ ...report, status: 'succeeded', report_id: id, id: String(start+i).padStart(26, '0'), collection_name: '追加ページ'+(start+i), scheduled_at: day+'T00:00:00.'+String(999999-i).padStart(6, '0')+'Z' }))
+  test.each([
+    { generation_jobs: [rows[30], rows[30]], next_cursor: null },
+    { generation_jobs: [{ ...rows[0], id: '00000000000000000000000999' }], next_cursor: null },
+    { generation_jobs: older('2026-03-31',100), next_cursor: first.next_cursor },
+  ])('loadMore rejects duplicate IDs, new-ID cross-page reversal and repeated cursor without consuming the boundary', async bad => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? ++attempts === 1 ? response(bad) : response(last) : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A','/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+  test('loadMore rejects an older page whose next cursor cycles to a previously consumed cursor, then retries B', async () => {
+    const second = { generation_jobs: older('2026-03-31',100), next_cursor: 'opaque_cursor_B' }
+    const third = older('2026-03-30',200)
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : !path.includes('?') ? response(first) : response(++attempts === 1 ? second : attempts === 2 ? { generation_jobs: third, next_cursor: 'opaque_cursor_A' } : { generation_jobs: third, next_cursor: null }))
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    await click('もっと読む')
+    expect(count()).toBe(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(90)
+    expect(app.text()).toContain('すべての保存済み予定・結果を表示しました')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A','/api/generation-jobs?cursor=opaque_cursor_B','/api/generation-jobs?cursor=opaque_cursor_B'])
+  })
+  test('double operation starts one continuation, with an unchanged opaque cursor', async () => {
+    const pending = deferred<Response>()
+    const { app, fetch } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?'))).toHaveLength(1)
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('続きを読み込んでいます')
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(35)
+  })
+  test('continuation 401 clears all rows/cursor and returns to /reports after login', async () => {
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(count()).toBe(0)
+    expect(app.text()).not.toContain('架空ページ')
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports%2Fdaily')
+    expect(app.findAll('button').some(button => button.text() === 'もっと読む')).toBe(false)
+  })
+  test.each(['route', 'logout', 'identity'])('late continuation after %s does not resurrect rows or cursor', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null, 204) : path.includes('?') ? pending.promise : response(first))
+    await click('もっと読む')
+    if (action === 'route') { await router.push('/me') }
+    else if (action === 'logout') { await click('ログアウト') }
+    else { window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })) }
+    await flushPromises()
+    pending.resolve(response(last)); await flushPromises()
+    expect(count()).toBe(action === 'identity' ? 30 : 0)
+    expect(app.text()).not.toContain('架空ページ34')
+  })
+  test('timeout keeps already shown rows and retries the same cursor', async () => {
+    let attempts = 0
+    const { app, fetch } = await start('/reports/daily', (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (!path.includes('?')) { return response(first) }
+      if (++attempts > 1) { return response(last) }
+      return new Promise<Response>((_, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await vi.advanceTimersByTimeAsync(15001)
+    await flushPromises()
+    expect(count()).toBe(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(count()).toBe(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('?')).map(([path]) => path)).toEqual(['/api/generation-jobs?cursor=opaque_cursor_A', '/api/generation-jobs?cursor=opaque_cursor_A'])
+  })
+})
+
+describe('daily Job display and refresh', () => {
+  const statuses = ['queued', 'running', 'succeeded', 'failed'] as const
+  const rows = statuses.map((status, i) => ({ id: String(4-i).padStart(26,'0'), collection_name: '予定'+status, scheduled_at: i < 2 ? '2026-04-01T15:00:00Z' : '2026-04-01T14:59:59Z', status, report_id: status === 'succeeded' ? id : null }))
+  test('four Japanese states, only success linked and JST dates cross UTC midnight correctly', async () => {
+    const { app } = await start('/reports/daily', path => path === '/api/me' ? me() : response({ generation_jobs: rows, next_cursor: null }))
+    expect(app.findAll('.daily-job')).toHaveLength(4)
+    expect(app.findAll('.daily-job a')).toHaveLength(1)
+    expect(app.get('.daily-job a').attributes('href')).toBe('/reports/'+id)
+    expect(app.findAll('.job-day h3').map(x => x.text())).toEqual(['2026/04/02','2026/04/01'])
+    expect(app.findAll('time').map(x => x.text())).toEqual(['00:00:00','00:00:00','23:59:59','23:59:59'])
+    expect(app.findAll('.job-status').map(x => x.text())).toEqual(['待機中','実行中','成功','失敗'])
+  })
+  test('refresh clears continuation, reads current state from first page and discards old continuation', async () => {
+    const pending = deferred<Response>()
+    const firstRows = Array.from({ length: 30 }, (_,i) => ({ ...rows[0], id: String(100-i).padStart(26,'0') }))
+    let reads = 0
+    const { app } = await start('/reports/daily', path => path === '/api/me' ? me() : path.includes('?') ? pending.promise : response(++reads === 1 ? { generation_jobs: firstRows, next_cursor: 'opaque' } : { generation_jobs: [{ ...rows[0], status: 'running' }], next_cursor: null }))
+    await click('もっと読む')
+    await click('更新')
+    pending.resolve(response({ generation_jobs: [rows[3]], next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.daily-job')).toHaveLength(1)
+    expect(app.get('.job-status').text()).toBe('実行中')
+    expect(app.text()).not.toContain('予定failed')
+  })
+  test('deep daily URL survives login, empty and malformed first page retry', async () => {
+    let authenticated = false
+    let reads = 0
+    const { app, router } = await start('/reports/daily', path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null,204) }
+      return response(++reads === 1 ? {} : { generation_jobs: [], next_cursor: null })
+    })
+    expect(router.currentRoute.value.fullPath).toBe('/login?return_to=%2Freports%2Fdaily')
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe('/reports/daily')
+    expect(app.find('[role="alert"]').exists()).toBe(true)
+    await click('予定・結果を再試行')
+    expect(app.text()).toContain('保存済みの予定・結果はありません。')
+  })
+})
+
+describe('daily route integration', () => {
+  test('existing Report screen opens daily view without adding a primary navigation', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/reports' ? response({ reports: [], next_cursor: null }) : response({ generation_jobs: [], next_cursor: null }))
+    expect(app.findAll('nav a')).toHaveLength(3)
+    await app.get('a[href="/reports/daily"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/reports/daily')
+    expect(app.text()).toContain('保存済みの予定・結果はありません。')
+    expect(app.findAll('nav a')).toHaveLength(3)
+  })
+  test.each(['route', 'logout'])('late first Job response after %s cannot restore data', async action => {
+    const pending = deferred<Response>()
+    const { app, router } = await start('/reports/daily', path => path === '/api/me' ? me() : path === '/api/logout' ? response(null,204) : pending.promise)
+    if (action === 'route') { await router.push('/me') } else { await click('ログアウト') }
+    await flushPromises()
+    pending.resolve(response({ generation_jobs:[{ id, collection_name:'遅延した非公開予定', scheduled_at:'2026-04-01T00:00:00Z',status:'queued',report_id:null }], next_cursor:null }))
+    await flushPromises()
+    expect(app.findAll('.daily-job')).toHaveLength(0)
+    expect(app.text()).not.toContain('遅延した非公開予定')
+  })
+})
+
+describe('Collection history route and selection', () => {
+  const collections = [summary, { ...summary, id: collectionID2, name: '別の架空の設定', display_order: 1 }]
+  const jobs = [
+    { id, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:05.123456Z', status: 'queued', report_id: null },
+    { id: otherId, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:04.123456Z', status: 'running', report_id: null },
+    { id: collectionID2, collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:03.123456Z', status: 'succeeded', report_id: id },
+    { id: '01ARZ3NDEKTSV4RRFFQ69G5FAY', collection_name: '保存済み名', scheduled_at: '2026-11-27T03:04:02.123456Z', status: 'failed', report_id: null },
+  ]
+  const page = (start: number, count: number, date = '2026-11-27') => Array.from({ length: count }, (_, offset) => {
+    const index = start + offset
+    const seconds = start === 0 ? 59 - offset : start < 60 ? 29 - offset : 59 - offset
+    const day = start < 60 ? date : '2026-11-26'
+    const time = start < 60 ? `00:00:${String(seconds).padStart(2, '0')}` : `23:59:${String(seconds).padStart(2, '0')}`
+    return { ...jobs[0]!, id: '01ARZ3NDEKTSV4RRFFQ69G5F' + index.toString(16).toUpperCase().padStart(2, '0'), collection_name: `ページ${start}`, scheduled_at: `${day}T${time}.123456Z` }
+  })
+  const firstPage = { generation_jobs: page(0, 30), next_cursor: 'collection_cursor_A' }
+
+  test('Report screen opens the selector without changing primary navigation', async () => {
+    const { app, router } = await start('/reports', path => path === '/api/me' ? me() : path === '/api/reports' ? response({ reports: [], next_cursor: null }) : response({ collections }))
+    expect(app.findAll('nav a')).toHaveLength(3)
+    await app.get('a[href="/reports/collections"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/reports/collections')
+    expect(app.text()).toContain('架空の設定')
+    expect(app.findAll('nav a')).toHaveLength(3)
+  })
+
+  test('deep selected URL survives login and shows all four states with only success linked', async () => {
+    let authenticated = false
+    const { app, router, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return authenticated ? me() : unauthenticated() }
+      if (path === '/api/login') { authenticated = true; return response(null, 204) }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response({ generation_jobs: jobs, next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(router.currentRoute.value.fullPath).toBe(`/login?return_to=%2Freports%2Fcollections%2F${id}`)
+    await fillAndSubmit()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${id}`)
+    expect(app.findAll('.collection-job')).toHaveLength(4)
+    expect(app.findAll('.collection-job a')).toHaveLength(1)
+    expect(app.get('.collection-job a').attributes('href')).toBe('/reports/' + id)
+    expect(app.findAll('.collection-job span').map(node => node.text())).toEqual(['待機中', '実行中', '成功', '失敗'])
+    expect(app.findAll('time')[0]!.text()).toBe('2026/11/27 12:04:05')
+    const calls = fetch.mock.calls.map(([path]) => path)
+    expect(calls.indexOf('/api/collections')).toBeLessThan(calls.indexOf(`/api/collections/${id}/generation-jobs`))
+  })
+
+  test('empty history differs from no current Collection and selection switches deep URLs', async () => {
+    let candidates = collections
+    const { app, router, fetch } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections: candidates }) }
+      if (path === `/api/collections/${collectionID2}/generation-jobs`) { return response({ generation_jobs: [], next_cursor: null }) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await app.get('#collection-jobs-choice').setValue(collectionID2)
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${collectionID2}`)
+    expect(app.text()).toContain('まだレポートはありません')
+    expect(fetch.mock.calls.map(([path]) => path)).toContain(`/api/collections/${collectionID2}/generation-jobs`)
+    candidates = []
+    await click('更新')
+    expect(app.text()).toContain('見つかりません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
+    expect(fetch.mock.calls.filter(([path]) => path === `/api/collections/${collectionID2}/generation-jobs`)).toHaveLength(1)
+  })
+
+  test.each(['failed refresh', 'removed selection'])('clears stale options after %s', async outcome => {
+    let listReads = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') {
+        listReads++
+        return outcome === 'failed refresh' && listReads > 1
+          ? response({ error: { code: 'internal_error' } }, 500)
+          : response({ collections: outcome === 'removed selection' && listReads > 1 ? [] : collections })
+      }
+      return response({ generation_jobs: [jobs[0]], next_cursor: null })
+    })
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toContain('架空の設定')
+    await click('更新')
+    if (outcome === 'failed refresh') {
+      expect(app.find('[role=alert]').exists()).toBe(true)
+    } else {
+      expect(app.text()).toContain('見つかりません。')
+    }
+    const options = app.findAll('#collection-jobs-choice option')
+    expect(options.map(option => option.text())).not.toContain('架空の設定')
+    expect(options.map(option => option.text())).not.toContain('別の架空の設定')
+    expect(options.some(option => option.attributes('value') === id)).toBe(false)
+    expect(fetch.mock.calls.filter(([path]) => path === `/api/collections/${id}/generation-jobs`)).toHaveLength(1)
+  })
+
+  test('no Collection candidate never calls the history API', async () => {
+    const { app, fetch } = await start('/reports/collections', path => path === '/api/me' ? me() : response({ collections: [] }))
+    expect(app.text()).toContain('表示できるCollectionはありません。')
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/collections'])
+  })
+
+  test('switching selected Collection discards a delayed older response', async () => {
+    const delayed = deferred<Response>()
+    const firstPage = [{ ...jobs[0]!, id: '01ARZ3NDEKTSV4RRFFQ69G5FAY' }]
+    const secondPage = [{ ...jobs[1]!, id: '01ARZ3NDEKTSV4RRFFQ69G5FAZ' }]
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return delayed.promise }
+      return response({ generation_jobs: secondPage, next_cursor: null })
+    })
+    await router.push(`/reports/collections/${collectionID2}`)
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('実行中')
+    delayed.resolve(response({ generation_jobs: firstPage, next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).not.toContain('待機中')
+  })
+
+  test('a held Collection continuation cannot mix into the next Collection route', async () => {
+    const continuation = deferred<Response>()
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('/generation-jobs?cursor=collection_cursor_A')) { return continuation.promise }
+      return response({ generation_jobs: [{ ...jobs[1]!, collection_name: '次Collection専用履歴' }], next_cursor: null })
+    })
+    await click('もっと読む')
+    await router.push(`/reports/collections/${collectionID2}`)
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/reports/collections/${collectionID2}`)
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('次Collection専用履歴')
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(1)
+    expect(app.text()).toContain('次Collection専用履歴')
+    expect(app.text()).not.toContain('ページ30')
+  })
+
+  test('logout while a Collection continuation is pending cannot restore rows or candidate names', async () => {
+    const continuation = deferred<Response>()
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) { return continuation.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    await click('もっと読む')
+    await click('ログアウト')
+    expect(app.find('#password').exists()).toBe(true)
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.text()).not.toContain('架空の設定')
+    expect(app.text()).not.toContain('ページ30')
+  })
+
+  test('a delayed Collection candidate response cannot restore options after a route switch', async () => {
+    const oldCandidates = deferred<Response>()
+    const freshCandidates = deferred<Response>()
+    let listReads = 0
+    const { app, router, fetch } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return ++listReads === 1 ? oldCandidates.promise : freshCandidates.promise }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    expect(app.find('#collection-jobs-choice').attributes('disabled')).toBeDefined()
+    await router.push(`/reports/collections/${id}`)
+    await flushPromises()
+    expect(listReads).toBe(2)
+    freshCandidates.resolve(response({ collections: [] }))
+    await flushPromises()
+    oldCandidates.resolve(response({ collections }))
+    await flushPromises()
+    expect(app.text()).toContain('見つかりません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
+    expect(fetch.mock.calls.map(([path]) => path).filter(path => path.includes('/generation-jobs'))).toEqual([])
+  })
+
+  test('a delayed Collection candidate response cannot restore options after logout', async () => {
+    const candidates = deferred<Response>()
+    const { app } = await start('/reports/collections', path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return candidates.promise }
+      if (path === '/api/logout') { return response(null, 204) }
+      return response({ error: { code: 'not_found' } }, 404)
+    })
+    await click('ログアウト')
+    expect(app.find('#password').exists()).toBe(true)
+    candidates.resolve(response({ collections }))
+    await flushPromises()
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual([])
+    expect(app.text()).not.toContain('架空の設定')
+    expect(app.text()).not.toContain('別の架空の設定')
+  })
+
+  test('a failed selected-history refresh clears newly verified candidate options', async () => {
+    let historyReads = 0
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) {
+        historyReads++
+        return historyReads === 1
+          ? response({ generation_jobs: [jobs[0]], next_cursor: null })
+          : response({ error: { code: 'internal_error' } }, 500)
+      }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toContain('架空の設定')
+    await click('更新')
+    expect(app.find('[role=alert]').exists()).toBe(true)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('別の架空の設定')
+  })
+
+  test('a timed out Collection continuation retains rows and retries the same cursor once', async () => {
+    let attempts = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, (path, options) => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) {
+        attempts++
+        if (attempts === 1) {
+          return new Promise((_resolve, reject) => options.signal?.addEventListener('abort', () => reject(new Error('timeout'))))
+        }
+        return response({ generation_jobs: page(30, 5), next_cursor: null })
+      }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    vi.useFakeTimers()
+    await click('もっと読む')
+    await click('もっと読む')
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).length).toBe(1)
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).map(([path]) => path)).toEqual([
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+    ])
+  })
+
+  test('Collection continuation rejects reverse ordering and a cursor cycle across pages', async () => {
+    let attempts = 0
+    const second = page(30, 30)
+    const third = page(60, 30)
+    const { app } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.endsWith('cursor=collection_cursor_A')) {
+        attempts++
+        return response(attempts === 1
+          ? { generation_jobs: [...second].reverse(), next_cursor: null }
+          : { generation_jobs: second, next_cursor: 'collection_cursor_B' })
+      }
+      if (path.endsWith('cursor=collection_cursor_B')) { return response({ generation_jobs: third, next_cursor: 'collection_cursor_A' }) }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(60)
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(60)
+    expect(app.text()).toContain('同じ続きから再試行')
+  })
+
+  test('a delayed continuation cannot restore old rows or options across an identity recheck', async () => {
+    const continuation = deferred<Response>()
+    const refreshedCandidates = deferred<Response>()
+    const refreshedCandidatesMe = deferred<Response>()
+    let meReads = 0
+    let collectionReads = 0
+    const { app, router } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return ++meReads === 1 ? me() : refreshedCandidatesMe.promise }
+      if (path === '/api/collections') { return ++collectionReads === 1 ? response({ collections }) : refreshedCandidates.promise }
+      if (path === `/api/collections/${id}/generation-jobs`) { return response(firstPage) }
+      if (path.includes('cursor=collection_cursor_A')) { return continuation.promise }
+      return response({ generation_jobs: [], next_cursor: null })
+    })
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await click('もっと読む')
+    await router.push('/reports/collections')
+    await flushPromises()
+    expect(meReads).toBe(2)
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    continuation.resolve(response({ generation_jobs: page(30, 5), next_cursor: null }))
+    await flushPromises()
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).not.toContain('架空の設定')
+    refreshedCandidatesMe.resolve(me())
+    await flushPromises()
+    expect(collectionReads).toBe(2)
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual(['選択してください'])
+    refreshedCandidates.resolve(response({ collections: [] }))
+    await flushPromises()
+    expect(app.text()).toContain('表示できるCollectionはありません。')
+    expect(app.findAll('#collection-jobs-choice option').map(option => option.text())).toEqual(['選択してください'])
+  })
+
+  test('refresh rechecks candidates and reads a changed status from the first page', async () => {
+    let reads = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      return response({ generation_jobs: [{ ...jobs[0]!, status: ++reads === 1 ? 'running' : 'failed' }], next_cursor: null })
+    })
+    expect(app.get('.collection-job span').text()).toBe('実行中')
+    await click('更新')
+    expect(app.get('.collection-job span').text()).toBe('失敗')
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/collections')).toHaveLength(2)
+  })
+
+  test('continuation rejects malformed pages, preserves cursor and retries the same collection cursor', async () => {
+    const prefix = '01ARZ3NDEKTSV4RRFFQ69G5F'
+    const items = Array.from({ length: 35 }, (_, index) => ({ ...jobs[0]!, id: prefix + index.toString(16).toUpperCase().padStart(2,'0'), scheduled_at: `2026-11-27T03:04:${String(35-index).padStart(2,'0')}.123456Z` }))
+    const first = { generation_jobs: items.slice(0, 30), next_cursor: 'collection_cursor_A' }
+    const last = { generation_jobs: items.slice(30), next_cursor: null }
+    let attempts = 0
+    const { app, fetch } = await start(`/reports/collections/${id}`, path => {
+      if (path === '/api/me') { return me() }
+      if (path === '/api/collections') { return response({ collections }) }
+      if (path.endsWith('/generation-jobs?cursor=collection_cursor_A')) { return response(++attempts === 1 ? { generation_jobs: [items[30], items[30]], next_cursor: null } : last) }
+      return response(first)
+    })
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(30)
+    expect(app.text()).toContain('同じ続きから再試行')
+    await click('もっと読む')
+    expect(app.findAll('.collection-job')).toHaveLength(35)
+    expect(fetch.mock.calls.filter(([path]) => path.includes('cursor=')).map(([path]) => path)).toEqual([
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+      `/api/collections/${id}/generation-jobs?cursor=collection_cursor_A`,
+    ])
+  })
+
+  test('continuation 401 clears rows and returns to the selected deep URL login', async () => {
+    const prefix = '01ARZ3NDEKTSV4RRFFQ69G5F'
+    const first = { generation_jobs: Array.from({ length: 30 }, (_, i) => ({ ...jobs[0]!, id: prefix + i.toString(16).toUpperCase().padStart(2,'0'), scheduled_at: `2026-11-27T03:04:${String(35-i).padStart(2,'0')}.123456Z` })), next_cursor: 'collection_cursor_A' }
+    const { app, router } = await start(`/reports/collections/${id}`, path => path === '/api/me' ? me() : path === '/api/collections' ? response({ collections }) : path.includes('cursor=') ? unauthenticated() : response(first))
+    await click('もっと読む')
+    expect(router.currentRoute.value.fullPath).toBe(`/login?return_to=%2Freports%2Fcollections%2F${id}`)
+    expect(app.findAll('.collection-job')).toHaveLength(0)
+  })
 })

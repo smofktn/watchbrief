@@ -1004,7 +1004,7 @@ AIサービスの未検証の生レスポンスはReportの正本として保存
 - Collection削除とJob作成に使う具体的なロック
 - timeout値、heartbeat間隔、停止判定時間
 - AIサービス、構造化出力方式、利用モデル
-- Markdown変換・HTMLサニタイズライブラリと文字数上限
+- Markdown文字数上限（表示ライブラリの採用は[安全な表示](#保存済みreportの安全なmarkdown表示)を参照）
 - ログ基盤、監視、通知、保持期間
 - nginxとsystemdの具体設定、ドメイン・HTTPS、手動デプロイのビルド・転送・更新・確認・切り戻し手順、将来の自動化方式、ネットワーク、権限、バックアップ
 - 将来のコンテナ化とECSなどへの移行時期・条件、実行方式、データ移行手順
@@ -1051,3 +1051,71 @@ Frontendは新規ページと専用composableを追加し、既存の単一sessi
 HTTPのPATCH境界は既存のCSRF・Cookie・厳密JSONを扱い、UpdateCollectionユースケースが所有者・入力を確認する。PostgreSQL adapterは既存作成と共有する本人単位のtransaction advisory lockを取り、所有行・要求記録を確認する。版一致・停止中の条件付きUPDATE、版増加、要求記録をRead Committedの同じtransactionで確定する。再送では元結果だけを返し、現在値を再更新しない。将来の更新も版を進め、同じ要求空間・排他との整合を守る必要がある。
 
 認証・消去・遅延応答破棄と現在設定/生成履歴の境界を維持する。更新は認証通過後に完了し得る。通信契約は[更新API](API仕様/patch-api-collections.md)、保存構造は[DB設計](database-design.md#collection本体の編集issue-74)、利用者操作は[編集画面](画面仕様/コレクション本体の編集.md)を参照する。
+
+## WatchTarget追加・編集（Issue #78）
+
+[合意した範囲と最小正常系](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)に沿い、既存詳細の編集モードで本体と対象をまとめて保存する。Frontendは編集元の本体・対象・版を保持し、変更された行だけをPATCHする。競合では全体の下書きを保持して最新値を取得し、明示操作で編集し直す。結果不明時は同じ本文・番号で再送する。認証変化・離脱・編集終了時は対象も消去し、遅延応答を破棄する。
+
+既存UpdateCollectionユースケースが対象の入力条件と要求digestを検証する。PostgreSQL adapterは既存の本人単位transaction advisory lockを共有し、所有者・保存済み要求・停止状態・全体版を確認する。本体の条件付き更新後に対象の追加・編集を行い、全体の版増加・更新要求記録と同じtransactionで確定する。保存済み要求の再送では対象を再作成しない。将来の更新経路も全体版と同じ排他に整合させる。
+
+新規対象のONは将来の生成対象を表し、Collection有効化や生成開始の操作ではない。既存対象の状態・順序・情報源と、生成履歴・input_snapshotを維持する。契約は[更新APIの拡張](API仕様/patch-api-collections.md#watchtarget追加編集への拡張issue-78)、保存権限は[DB設計](database-design.md#watchtarget追加編集issue-78)、画面は[対象編集](画面仕様/コレクション本体の編集.md#watchtarget追加編集への拡張issue-78)を参照する。
+
+## 情報源追加・編集（Issue #18）
+
+Frontendは保存済み対象ごとに情報源下書きを保持し、変更行を独立sources配列にして既存PATCHへ送る。本体/対象/情報源で保存状態・競合比較・破棄を共有する。Backendは入力/所属を検証し、既存本人単位lockとtransactionの中で情報源も保存する。全体版と要求記録を共有し、旧本体/対象digestを維持する。外部取得・DNS照会は行わない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+## Schedule一括保存への拡張
+
+ブラウザは変更したScheduleだけを本体・対象・情報源と既存PATCHへ送り、結果不明時は同じ本文・要求番号で再試行する。APIは既存本人lock・停止状態・全体版検査のtransaction内でSchedule追加/編集と版増加・要求記録まで確定する。再送は保存済み結果を返し、追加IDを再生成しない。保存後の詳細GETと競合時の最新値比較・明示再編集も既存経路を共有する。
+
+[Scheduleの業務規則](domain-model.md#schedule一括保存への拡張)、[DB制約と権限](database-design.md#schedule一括保存への拡張)、[受理構文と#19との共通契約](API仕様/patch-api-collections.md#schedule追加編集)を参照する。保存処理はScheduler/Workerを起動せず、生成履歴を書き換えない。
+
+## 保存済みReportの安全なMarkdown表示
+
+ブラウザが取得済みbody_markdownをmarkdown-itで変換し、DOMPurifyとアプリのリンク条件で制限して局所コンポーネントへ表示する。保存/API/生成処理は変更しない。本文props由来の計算だけを持ち、既存useResourceの消去・遅延応答破棄を共有する。未対応/例外時は安全なテキスト表示に閉じる。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+APIは認証を先に照合し、31件までのkeyset queryから最大30件と次cursorを返す。ブラウザは既存useResourceの初回取得/消去を共有し、Report側composableが続きのロック/保持/再試行/遅い応答破棄を担当する。cursorをFrontendで生成/解読せず、順序はマイクロ秒を保持して検査する。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別の保存済み予定・結果一覧（Issue #88）
+
+HTTP→GenerationJobsユースケース→sqlc/pgxで認証後に所有者条件付きSELECTを行う。Jobを起点にAttempt/ReportをLEFT JOINし、Attemptのない待機中Jobも返す。成功状態とReport有無の不整合は内部障害として閉じる。既存の成功Report一覧・詳細は独立して維持する。
+
+ブラウザは共通useResourceの初回取得・認証epoch・消去を維持し、日付別featureが追加取得と手動更新を担当する。続き失敗は既表示とcursorを保持、route/認証変化/logout/更新開始で旧応答を破棄する。日本時間の日付で全取得行をまとめるためページ境界で同日見出しを重複させない。API/画面の具体契約は[Job一覧API](API仕様/get-api-generation-jobs.md)と[日付別画面](画面仕様/日付別の予定・結果一覧.md)。生成・外部通信・永続cacheは追加しない。
+
+## Collection別の保存済み予定・結果一覧（Issue #90）
+
+既存 `/api/collections` で本人の現在Collection候補を取得し、画面は候補取得後に選択CollectionのJob APIを呼ぶ。選択URLのIDが候補にない場合は履歴APIを呼ばず「見つかりません」とし、API側でもCookie由来User IDと現在Collectionを再検証する。新しい読み取りAPIは認証後にqueryを検証し、Collection不存在・他者所有・削除済みを同じ404にする。
+
+Collection存在確認とJob取得は1つのSQL文のスナップショットで行い、Collection削除との間に不整合な2段階読み取りを作らない。Job検索は `j.user_id` と `j.collection_id` の両方を必須条件にする。削除後の履歴はこのAPIから返さず、削除済みCollectionへのJOINを要求しない既存日付別APIに残す。ページ境界は既存のJob専用cursorとUTCマイクロ秒を再利用し、cursor自体は所有権・Collection選択を表さない。Collection条件は全ページのSQLへ必ず適用する。
+
+画面は既存 `useResource`/共有sessionでCollection候補取得とJob取得を直列化し、route外遷移/auth epoch/明示更新/失敗で候補と履歴を消去する。Collection route切替中に残せる候補は同じ認証epochで直前に確認した一覧だけとし、新候補応答を検証後すぐ置き換える。削除を示す404では当該IDを候補から除き、失効済みAbortSignalの応答は候補にも履歴にも反映しない。候補取得・履歴取得・追加取得はいずれも同じ遷移世代とAbortSignalに属し、切替前応答を採用しない。候補一覧と履歴APIは読み取り専用で、失敗時に設定・Job・Reportを修復/変更しない。具体契約は[API](API仕様/get-api-collection-generation-jobs.md)と[画面](画面仕様/Collection別の予定・結果一覧.md)。
+
+## ホームの最新保存済みReport（Issue #92）
+
+保護URL `/home` の画面は `GET /api/home` を呼び、セッション由来Userの現在Collectionと各Collectionの最新成功Report IDだけを読む。APIは現在Collectionを起点とする1 SQL statementで全行と最新Reportを同一snapshotから組み立て、CollectionとGenerationJobの両方に所有者条件を置く。Collectionは `display_order,id` 順、各CollectionのReportは既存Report一覧と同じ `scheduled_at DESC, report.id DESC` の先頭を選ぶ。現在Collection名とJobに保存された履歴名は混ぜず、Report詳細は既存の所有者認可付き経路へ委ねる。
+
+Frontendは既存session/useResourceの認証epoch、route離脱、logout、再試行時の消去と遅延応答破棄を使う。手動更新は先頭の状態を再取得し、空Collection・Reportなし・loading・固定エラーを区別する。画面とAPIは読み取り専用で、Job/Report生成、外部取得、cronからの過去Job復元、当日状態、並べ替え、次回予定の計算は追加しない。契約は[API](API仕様/get-api-home.md)と[画面](画面仕様/ホーム.md)。
+
+## ホームの本日予定状態（Issue #94）
+
+`GET /api/home` のusecaseは試験可能な時計から現在時刻を一度だけ取得し、その瞬間のJST日付とJST 00:00から翌日00:00までの半開区間を確定する。区間と日付は同じ応答内の全Collectionで共通とし、SQLへUTC時刻境界を渡す。ブラウザtimezoneやcronから日付・予定を計算しない。
+
+現在Collection、各Collectionの本日4状態件数、既存の最新成功Report IDを1 SQL statementで読む。CollectionとJobの所有者条件、JobのCollection条件を維持する。状態件数はGenerationJob.statusの集計で、Attempt/Reportの有無に依存させない。API/画面は既存session/useResourceの更新、401、epoch変更、logout、route離脱時の消去と遅延応答破棄を継続利用する。本文/snapshot/Attempt/失敗詳細は応答へ含めない。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+ホームの編集モードは `GET /api/home` の現在順・各Collection versionを初期値とし、ドラフトだけを画面メモリに保持する。上へ/下へ移動して保存すると `PUT /api/collections/order` へ完全な期待状態と希望順、`Idempotency-Key` を送る。成功後にhomeと既存Collection一覧を再取得し、失敗時はドラフトを保持する。取消・route離脱・認証epoch変更・logoutでドラフトと要求状態を消し、古い応答を採用しない。
+
+APIは既存の認証/CSRF保護下で、user_id由来の `hashtextextended(user_id,18)` transaction advisory lockを取り、Read Committed transaction内で要求記録を先に確認する。同じkeyとdigestの再送は保存済み成功を返す。新規要求は現在の本人Collection全体を `display_order,id` でロック付き読み取りし、期待する `{id,version}` 配列が順序・構成・版まで完全一致すること、希望ID列が期待列と重複なく同じ集合であることを確認する。不一致は409であり、他者・不存在・削除済みの詳細は返さない。
+
+全体versionと既存の作成/更新要求digest・replayを維持し、更新対象のdisplay_order・version・updated_atと本人/key/input_digest要求記録を同一transactionで保存する。変更のない行のversionは増やさず、全体が既に希望順なら要求記録だけを保存する。既存の成功済み作成/更新要求は先にdigest/replay照合され、同一要求再送は元の結果だけを返して現在順序を戻さない。順序変更後に古いversionで新しく編集する要求は競合する。トランザクション失敗時は一部の順序を残さない。現行にはCollection削除APIがない。将来の削除も同じowner lockを共有し、関連履歴条件を維持する必要がある。
+
+新しい要求記録のmigrationはAPIに必要なSELECT/INSERTのみを許可し、Collectionへdisplay_order/version/updated_atの列UPDATEだけを付与する。表示順一意制約、追加index、runtime/依存は設けない。下書き・要求入力を永続化せず、読み取りのhome latest Reportと本日状態、設定/履歴/Reportは変更しない。詳しい契約は[API](API仕様/put-api-collection-order.md)・[画面](画面仕様/ホーム.md#collection表示順の変更issue-96)を参照する。

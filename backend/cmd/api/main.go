@@ -62,11 +62,15 @@ func run(logger *slog.Logger) error {
 		return errors.New("dummy_hash_initialize")
 	}
 	login := usecase.Login{Store: postgres.NewUserStore(pool), Verifier: hasher, DummyHash: dummyHash, NewID: identifier.NewULID, NewToken: token.New}
-	handler, err := httpapi.NewHandler(os.Getenv("APP_ORIGIN"), login, usecase.CurrentUser{Store: postgres.NewUserStore(pool)}, usecase.Logout{Store: postgres.NewUserStore(pool)}, logger, usecase.Collections{Store: postgres.NewUserStore(pool), Creator: &usecase.CreateCollection{Store: postgres.NewUserStore(pool), NewID: identifier.NewULID}, Updater: &usecase.UpdateCollection{Store: postgres.NewUserStore(pool)}})
+	store := postgres.NewUserStore(pool)
+	handler, err := httpapi.NewHandler(os.Getenv("APP_ORIGIN"), login, usecase.CurrentUser{Store: store}, usecase.Logout{Store: store}, logger, usecase.Collections{Store: store, Creator: &usecase.CreateCollection{Store: store, NewID: identifier.NewULID}, Updater: &usecase.UpdateCollection{Store: store}, Reorderer: &usecase.ReorderCollections{Store: store}})
 	if err != nil {
 		return errors.New("invalid_origin_configuration")
 	}
 	handler = httpapi.WithReports(handler, usecase.Reports{Store: postgres.NewUserStore(pool)}, logger)
+	handler = httpapi.WithGenerationJobs(handler, usecase.GenerationJobs{Store: postgres.NewUserStore(pool)}, logger)
+	handler = httpapi.WithCollectionGenerationJobs(handler, usecase.CollectionGenerationJobs{Store: postgres.NewUserStore(pool)}, logger)
+	handler = httpapi.WithHome(handler, usecase.Home{Store: postgres.NewUserStore(pool)}, logger)
 	addr := os.Getenv("API_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8080"

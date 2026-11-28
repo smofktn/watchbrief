@@ -60,7 +60,7 @@ Backend側でmigrationと `make seed-collections LOGIN_ID=fictional_user` を実
 
 0件・Scheduleなし・対象/情報源なし、404、取得失敗と「設定を再試行」を区別する。別Userの詳細IDを直接開いても「見つかりません。」とし、情報を表示しない。ログアウト開始時に設定を即座に消し、遅い設定応答や履歴操作で復活しないことも確認する。URL・本文をHTMLとして挿入せず、外部取得や編集操作は行わない。
 
-保存済みReportは `/reports` の最小一覧と `/reports/{ULID}` の詳細で取得する。本文はHTML挿入せずテキスト表示し、再試行・401/404・ログアウト中の消去は[画面仕様](../docs/画面仕様/保存済みReportの取得.md)に従う。
+保存済みReportは `/reports` の最小一覧と `/reports/{ULID}` の詳細で取得する。本文は限定Markdown変換/sanitize後に表示し、未対応時は安全なテキストへ戻す。再試行・401/404・ログアウト中の消去は[画面仕様](../docs/画面仕様/保存済みReportの取得.md)に従う。
 
 ## Frontendの責務とテスト（Issue #68）
 
@@ -103,3 +103,59 @@ make coverage
 `CollectionFields.vue` と `form.ts` は作成/編集の入力部品・検証を共有し、通信と状態処理は各composableが担う。版と再試行の記録はAPI/DBが担当する。詳細は[編集画面](../docs/画面仕様/コレクション本体の編集.md)と[更新API](../docs/API仕様/patch-api-collections.md)。版10を明示適用したAPIが必要で、画面URLはAPIのAPP_ORIGINと一致させる。既定は `http://127.0.0.1:5173`。
 
 `make frontend-test` / `make check` のVitestと、ルートの `make verify-collection-update` の隔離実DB/Chromiumを使う。前者の応答注入と後者の実保存・実DB停止を区別し、実行結果は#74/PRへ記録する。未保存変更確認は#42、配下CRUD等は#18の残りとして維持する。
+
+## Collectionと対象の一括編集（Issue #78）
+
+停止中Collection詳細の「編集」で、本体の下にある対象名・任意の補足指示を編集する。「対象を追加」は未保存の行を追加し、「追加を取り消す」はその行だけを破棄する。最後の「保存」で本体と変更対象を一緒に保存する。対象変更は1回20行以内、登録総数の上限ではない。既存対象の状態・順序・情報源は維持する。新規対象のONではCollectionの生成を開始しない。
+
+競合時は対象を含む下書きを残して最新値を比較し、明示操作で編集し直す。結果不明中は入力を止めて同じ要求を再送する。離脱・認証変化では下書きを消去する。make frontend-testは応答注入による試験、make verify-collection-targetsは隔離DB・Chromiumの通し試験であり、確認範囲を区別する。
+
+### 情報源の一括保存（Issue #80）
+
+停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](../docs/API仕様/patch-api-collections.md)を参照。
+
+検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
+
+## Scheduleの一括編集（Issue #82）
+
+停止中Collectionの既存編集モードに `ScheduleFields.vue` を表示し、日本時間のraw cronを本体・対象・情報源と一括保存する。入力例・構文エラー・入力保持を表示し、未設定なら空欄で保存できる。既存式の空欄削除は許可しない。`scheduleForm.ts` とGoのvalidatorは共通fixtureで受理構文を検証する。限定構文・#19との共通契約は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)、操作は[編集画面](../docs/画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照。
+
+既存の版・競合比較・明示再編集・結果不明時の本文/番号保持・認証消去・遅延応答破棄を拡張する。単体は `make frontend-test`、実DB/Chromiumはルートの `make verify-collection-schedules`。API側の版13権限が必要だが、通常起動にmigrationを追加しない。次回予定表示・生成処理は含めない。
+
+## 保存済みReportのMarkdown表示（Issue #84）
+
+`ReportMarkdown.vue` が保存本文だけを受け取り、`markdown.ts` の最終変換/sanitize結果だけを局所的に挿入する。未対応/例外時は固定案内とVue補間の本文テキストへ閉じる。本文props由来の計算だけを持ち、独立キャッシュやHTMLの永続保存はしない。useResourceの取得開始・route/認証変化・logout消去と遅延応答破棄をそのまま使う。許可タグ/タグ別属性・URL条件は[画面仕様](../docs/画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を正とする。
+
+markdown-it 15.0.3（MIT）とDOMPurify 3.5.0（Apache-2.0選択）をexact pinする。markdown-it v15の型・ESM/browser export同梱を確認し、@types/markdown-itは不要。固定runtime Node26.13.0・Vite8・TS6で型/ビルドを確認する。DOMPurify3.5.0のsecurity fixesを含むreleaseと公式README、安全性/移行資料を確認した。Marked18.3.0も代替だが、HTML/画像/拡張構文の制御を明示できる点でmarkdown-itを採用した代理判断。独自regexのみのsanitizeやhighlight依存は追加しない。
+
+追加のruntime依存は既存lock項目を変えず追加分だけ固定する。インストールは既存 `make frontend-install`（npm ci --ignore-scripts）を使う。`public/THIRD-PARTY-NOTICES.txt` へ追加依存/同梱helperのcopyrightとlicenseを反映し、Viteが配布dist直下へ複製することを確認する。DOMPurifyはパッケージLICENSEのApache-2.0を選択し、配布bundleのcopyrightと同梱MIT regenerator helperの表示も保持する。今回追加パッケージに別のNOTICEファイルはない。ライブラリ本体のソース変更はしない。CLI依存argparseのPSF表示も含める。依存更新時は現物license/NOTICEと監査を再確認する。
+
+`make frontend-test` はXSS/URL回避/タグ別属性/HTML文字表示/画像無要素、未対応/変換/sanitize例外、props変更と実Router/認証・遅延応答消去を確認する。実DB・Chromiumはルートの `make verify-report-markdown`。Go/Node・Docker/Compose・既存goose・Chromiumが必要で、不足ライブラリは既存BROWSER_LIBRARY_PATHを使いOSへ導入しない。専用project/空きport・架空User/別namespaceの保存Reportで、深いURLからの復帰/再読込/表示/消去、ネットワーク要求監視、本文/API/履歴不変、通常DBの稼働状態不変と専用環境除去を検証する。外部要求はCDPで送信前に拒否するガードを置き、試験の成功条件は拒否0件・外部要求の発生自体0件とする。リンク先はクリックしない。
+
+架空データを追加する手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。既存の架空UserとDB準備が必要で、別namespaceへ原子的追加する。既存v3履歴は変更せず、再投入時の差異を拒否する。seedは生成成功の実証ではない。通常DBへの実行は今回の作業では行わず、使い捨てrunner内だけで検証する。
+
+実施結果・監査結果・未確認のブラウザ/配備等はIssue/PRへ記録する。API/DB/schema/生成処理は不変、migration不要。本格一覧/home・Collection有効化・#19/#20/#21は対象外。
+
+## Report一覧の追加取得（Issue #86）
+
+`useReports.ts` は既存useResourceによる初回取得/消去を共有し、Report専用の追加項目/next cursor/実行中/エラーだけを保持する。共通useResourceは変更しない。初回は30件まで、「もっと読む」で続きを取得し、失敗/timeout/不正payloadでは既存項目と同じcursorを保持する。二重取得を抑止し、認証/route/初回データ置換・logoutで続きの状態も破棄する。401は正しい `/reports` へログイン復帰する。詳細のMarkdown表示は維持する。
+
+cursorはサーバー値のまま再送し、解読/再生成/URL・storage永続化しない。順序検査はUTC小数部6桁の文字列とULIDで行い、JSミリ秒へ丸めない。重複/逆順/境界重複・繰返しcursor等は全ページを追加せず、再試行できる。日時のDate利用は暦の妥当性だけで順序比較には使わない。全ページsnapshotではなく、新しい先頭は再読込で確認する。[API](../docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)・[画面](../docs/画面仕様/保存済みReportの取得.md#保存済み成功report一覧の追加取得)を参照。
+
+単体/実Routerは `make frontend-test`、使い捨てDB/Chromiumはルート `make verify-report-pages`。0/30/31/35・同一秒マイクロ差とID逆順・同日時、追加取得失敗/timeout/重複・不正payload・二重操作、認証失効/離脱/遅い応答を確認する。npm ci --ignore-scripts・既存runtime/依存/lockは維持し、追加依存はない。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+検証入口はルートの `make verify-daily-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](../backend/README.md#日付別の保存済み予定結果issue-88)を参照する。
+
+契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。
+
+## Collection別の保存済み予定・結果（Issue #90）
+
+既存のReport一覧から `/reports/collections` を開き、本人の現在Collectionを選ぶと `/reports/collections/{ULID}` で履歴を読みます。成功行だけ保存済みReport詳細へ移動し、4状態/予定時刻は日本語/JSTで表示します。collection設定画面からはReportへの導線を追加しません。
+
+候補一覧と選択履歴は直列に取得し、同じuseResource/AbortSignalと認証epochに従います。選択・route・認証・更新ごとに古い取得/ページ/cursorを破棄し、遅い前Collection応答を混ぜません。続き失敗時は既表示とcursorを保持して同じcursorを再試行します。APIの所有権確認が最終境界であり、削除/他者/不存在を同じ404にします。削除済み履歴は日付別画面に残ります。
+
+`make frontend-test` の応答注入試験とルート `make verify-collection-jobs` の実DB/Chromium試験を区別します。画面/API契約は[Collection別画面](../docs/画面仕様/Collection別の予定・結果一覧.md)と[Job API](../docs/API仕様/get-api-collection-generation-jobs.md)を参照してください。

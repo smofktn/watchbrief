@@ -34,7 +34,9 @@ form {
   box-sizing: border-box;
 }
 
-.report-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.report-body { overflow-wrap: anywhere; }
+.report-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.report-text { white-space: pre-wrap; font: inherit; }
 
 fieldset { min-width: 0; display: grid; gap: 1.25rem; }
 .field textarea, .field select { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; }

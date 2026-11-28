@@ -24,7 +24,7 @@ MVPでは、次の使い方を想定しています。
 
 ## 現在できること
 
-ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。対象・Schedule等の編集は後続範囲で、Report本文はテキスト表示です。
+ローカルで、管理CLIによる架空User作成・パスワード再設定、ログイン・本人情報表示、自分のCollection設定と保存済みReportの取得、ログアウトまでつながっています。保護URLはログイン後に安全な戻り先へ復帰します。既存設定とReportの取得に加え、停止中Collection本体の新規保存と同じ要求の再試行に対応します。停止中Collection本体の編集と競合検出・安全な再試行にも対応します。停止中Collectionの対象・情報源・Schedule追加/編集を同じ画面で一括保存できます。有効化・削除・並べ替え等は後続範囲で、Report本文は安全なMarkdown表示に対応します。
 
 最初は[新規環境の起動・確認手順](docs/verification-issue-17.md)に従ってください。`make verify-issue17` は通常DBを止めず、専用の使い捨てDBで新規構築・実DB障害と復旧・ブラウザ操作を検証します。
 
@@ -104,3 +104,51 @@ main向けPRではGitHub Actionsが既存の `make check`・`make build` を自�
 Collection本体の新規作成は一覧の「新規作成」から操作します。事前に版9の明示migrationが必要です。通常DBを停止しない追加検証は `make verify-collection-creation`。範囲と制限は[Backend手順](backend/README.md#collection本体の新規保存issue-18)を参照してください。
 
 Collection本体の編集は版10の明示migration後、停止中の詳細から操作します。事前の隔離検証は `make verify-collection-update`。[操作・検証手順](backend/README.md#collection本体の編集issue-74)を参照してください。
+
+停止中Collection本体とWatchTargetの追加・編集をまとめて保存する手順は[Frontend](frontend/README.md#collectionと対象の一括編集issue-78)、版11の明示migrationと隔離検証 `make verify-collection-targets` は[Backend](backend/README.md#本体とwatchtargetの一括保存issue-78)を参照してください。通常起動・#21の配備への自動migrationは行いません。
+
+### 情報源の一括保存（Issue #80）
+
+停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](docs/API仕様/patch-api-collections.md)を参照。
+
+検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
+
+### Scheduleの一括保存（Issue #82）
+
+停止中Collectionの編集で、日本時間のraw cron式を追加・編集し、本体・対象・情報源とまとめて保存します。例は `0 7 * * *`（毎日7時）。未設定の空欄は追加せず、登録済みの式を空にして削除することはできません。保存で生成は開始しません。[画面/API契約](docs/画面仕様/コレクション本体の編集.md#schedule追加編集issue-82)を参照してください。
+
+通常DBへの自動適用はありません。版13はScheduleの必要列権限だけを追加します。専用Compose project/架空データの検証入口は `make verify-collection-schedules`。[検証手順](backend/README.md#scheduleの一括保存issue-82)を参照してください。
+
+### 保存済みReportのMarkdown表示（Issue #84）
+
+所有するReportの詳細で保存済み本文を見出し・段落・強調・リスト・コード・安全な出典リンクとして表示します。生HTMLや画像は文字として表示し、整形不可時も安全なテキストへ戻します。API/保存本文は変更せず、閲覧時に生成・外部取得を行いません。[画面契約](docs/画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照してください。
+
+検証入口は `make verify-report-markdown`。通常DBを操作しない使い捨て環境でChromiumのネットワーク監視も行います。[検証と依存の手順](frontend/README.md#保存済みreportのmarkdown表示issue-84)を参照してください。
+
+### 保存済みReport一覧の追加取得（Issue #86）
+
+`/reports` は新しい順に30件まで表示し、「もっと読む」で30件ずつ追加します。続きの失敗は表示済み項目を残して再試行でき、一覧から離れる/再読み込みすると最初から表示します。新しい先頭分は再読み込みで確認します。日付別の予定・結果と4状態は直下の「日付別の保存済み予定・結果（Issue #88）」、Collection別表示は「Collection別の保存済み予定・結果（Issue #90）」を参照してください。ホームのCollection一覧と最新保存Reportへの導線は「ホーム（Issue #92）」を参照してください。Collection設定一覧/編集からReportへの導線は初期MVPでは持たせません。ホーム当日状態・並べ替えは後続です。
+
+検証入口は `make verify-report-pages`、手動の架空35件seedは `make seed-report-pages LOGIN_ID=fictional_user`。本作業では通常DBへseedを行わず、専用の使い捨て環境だけで検証します。[API契約](docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)・[検証手順](backend/README.md#保存済みreport一覧の追加取得issue-86)を参照してください。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+検証入口はルートの `make verify-daily-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](backend/README.md#日付別の保存済み予定結果issue-88)を参照する。
+
+契約は[Job一覧API](docs/API仕様/get-api-generation-jobs.md)と[日付別画面](docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。
+
+## Collection別の保存済み予定・結果（Issue #90）
+
+`/reports/collections` で現在の本人Collectionを選び、`/reports/collections/{ULID}` でそのCollectionに保存済みのJobを予定時刻の新しい順に30件ずつ表示します。日本時間で4状態を表示し、成功だけReport詳細へ移動します。削除済みCollectionの履歴は日付別画面に残ります。生成は実行しません。
+
+検証入口は `make verify-collection-jobs`。使い捨てDB/架空データ/Chromiumによる範囲と事前条件は[Backend手順](backend/README.md#collection別の保存済み予定結果issue-90)を参照してください。
+
+契約は[Collection別Job API](docs/API仕様/get-api-collection-generation-jobs.md)と[Collection別画面](docs/画面仕様/Collection別の予定・結果一覧.md)。検証結果はIssue/PRに記録します。
+
+## ホーム（Issue #92）
+
+`/home` で本人の現在Collectionと現在名を表示し、各Collectionに保存済み成功Reportがある場合だけ既存詳細へのリンクを表示します。リンクを主導線として維持し、JST本日の保存済みJobがあるCollectionには4状態の件数を補助表示します。生成や外部取得は行いません。
+
+検証入口は `make verify-home`。使い捨てDB/架空データ/Chromiumでホームの保存済み表示順変更、Collection一覧との一致、保存再送・競合・rollback、migration Up/Down時の列権限、旧作成/更新要求replayとの互換を確認します。既存の最新選択、4状態とJST境界、Job/Attemptの成功条件、空Collection、認証復帰、Report詳細への導線も回帰確認します。[画面仕様](docs/画面仕様/ホーム.md)・[順序更新API](docs/API仕様/put-api-collection-order.md)・[ホームAPI](docs/API仕様/get-api-home.md)を参照してください。

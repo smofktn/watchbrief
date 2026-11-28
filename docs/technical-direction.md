@@ -129,3 +129,33 @@ CRUDなど状態を変更する処理は、重複変更を避けるため無条�
 - [#11 EC2 1台構成のインフラ・運用](https://github.com/smofktn/watchbrief/issues/11)
 
 User保存用の現在のsqlc生成とpgx接続・試験は[Backendの手順](../backend/README.md#sqlcとuser保存の準備)を参照する。端末入力用x/term v0.47.0・ULID v2.1.2を管理コマンドで使用する。現在の手順は[架空User作成](../backend/README.md#架空userの作成)を参照する。
+
+## 日付別履歴の読み取り（Issue #88）
+
+既存Vue/Go/SQL＋sqlc、共通session/useResourceで構築し、新しい依存・runtime・migrationを追加しない。[Job一覧API](API仕様/get-api-generation-jobs.md)は既存成功Report一覧と異なるJob用cursorを使い、Frontendはcursorを解読・再生成しない。固定30件のkeysetと手動更新で開始する。
+
+## Collection別履歴の読み取り（Issue #90）
+
+既存Collection一覧API・Job用cursor・認証session/useResourceを使い、追加依存/runtime/DBスキーマ/migration/index/権限を増やさない。選択画面と選択Collectionの深いURLを分ける。候補を取得後に履歴APIを呼ぶが、APIはブラウザ側の選択や先行確認を信頼せず、CollectionとJobの所有者条件をSQLで再検証する。
+
+共通化は既存Job cursor・認証・UI資源管理に限る。#88の日付グループ/全Job読み取りを無理にCollection featureへ統合しない。cursorはCollectionスコープや認可を表さず、切替時には破棄し、SQLは各ページでCollection条件を固定する。
+
+選択URLのroute切替中だけは、同じ認証epochで直前の候補GETが確認したCollection候補をメモリ保持し、次の候補GETが検証済みになった時点で置き換える。明示更新、取得失敗、route外遷移、logout/identity recheckで直ちに消し、abort後の古い応答を候補へ反映しない。候補はUI選択肢の表示専用で、履歴APIの認可を代替しない。画面状態の境界は[Collection別画面仕様](画面仕様/Collection別の予定・結果一覧.md#urlと認証)を参照する。
+
+## ホームの最新Report表示（Issue #92）
+
+既存Vue/Go/SQL+sqlc、session/useResource、Markdown安全表示を再利用し、保護画面 `/home` と読み取りAPI `GET /api/home` を追加する。API応答は現在Collectionの `{id, name, latest_report_id}` のみに絞り、本文・snapshot・保存時Collection名をホーム用JSONへ複製しない。保存済み成功Reportは各Collection内で `scheduled_at DESC, report.id DESC` の先頭を使う。新runtime・依存・migration・権限・indexは追加しない。
+
+3つの主要ナビの本人情報リンク枠をホームへ接続する一方、`/me`、`/` のredirect、ログイン後の既定先は維持する。新 `/home` は認証済み保護URL allowlistへ追加し、深いURLのログイン復帰を試験する。当日状態・並べ替え・次回予定はこの範囲外である。
+
+## ホームの本日予定状態（Issue #94）
+
+既存Vue/Go/SQL+sqlc、認証session/useResource、`generation_jobs(user_id, scheduled_at, id)`索引、API SELECT権限を再利用する。時計はusecaseで差し替え可能にして、一度読んだ時刻からJST当日境界を作り、既存ホームqueryへUTC境界を渡す。1つのSQL snapshotで現在Collection、本日Job.statusの4件数、最新成功Report IDを読む。
+
+runtime、依存、テーブル、migration、index、権限は追加しない。件数0の欄省略は画面側の判断で、Job0件を失敗や未実行と解釈しない。詳細な応答と表示契約は[API](API仕様/get-api-home.md)・[ホーム](画面仕様/ホーム.md)を参照する。
+
+## ホームからのCollection表示順変更（Issue #96）
+
+既存Vue/Go/SQL+sqlc、session/useResource、Collection全体versionとowner advisory transaction lock namespace 18を再利用する。並べ替えの期待状態と本人の全順序を比較し、`display_order,id` の現状態と各行versionが一致した場合だけ一括保存する。専用要求digest/replay記録と必要列だけのDB権限にmigrationを追加し、runtime・外部依存・表示順一意制約・登録件数上限は追加しない。
+
+Collection削除APIはまだ存在しない。将来追加する場合は同じowner lockを共有し、順序更新との競合を直列化する。ホームのReport主導線/本日件数、既存設定一覧、認証epoch/route/logout消去と遅延破棄は維持する。具体契約は[API](API仕様/put-api-collection-order.md)・[画面](画面仕様/ホーム.md#collection表示順の変更issue-96)を参照する。

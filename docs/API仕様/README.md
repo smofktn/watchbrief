@@ -8,11 +8,15 @@ APIごとにMarkdownを置き、OpenAPIの `operationId`・`parameters`・`reque
 |---|---|---|
 | `POST /api/login` | [ログイン](post-api-login.md) | パス・役割・正常204（本文なし・Cookie発行）・その後の本人情報取得に合意。入力JSONのlogin_id・passwordに合意。主要エラーは共通表に合意。その他の詳細は未決定 |
 | `GET /api/me` | [本人情報取得](get-api-me.md) | パス・役割・Cookieによる本人特定・正常200とlogin_idのJSONに合意。主要エラーは共通表に合意。その他の詳細は未決定 |
+| `GET /api/home` | [ホーム取得](get-api-home.md) | Issue #92・#94・#96の実装契約。本人の現在Collection、最新成功Report ID、本日状態、Collection全体version |
+| `PUT /api/collections/order` | [Collection表示順の一括保存](put-api-collection-order.md) | Issue #96の実装契約。本人の全順序・version前提と同一要求再試行 |
 | `POST /api/logout` | [ログアウト](post-api-logout.md) | #54でPOST・CSRF・対象セッション物理削除後のCookie削除・204・再試行・401/403/500に合意 |
 | `GET /api/collections`・`GET /api/collections/{id}` | [設定取得](get-api-collections.md) | #56の委任に基づく実装判断。Cookie認証・所有者限定・他者404 |
 | `POST /api/collections` | [Collection本体の作成](post-api-collections.md) | #18の本体作成と重複しない再試行に合意。具体契約は実装判断 |
-| `PATCH /api/collections/{id}` | [本体更新](patch-api-collections.md) | Issue #74。版照合・同一要求の再試行 |
-| `GET /api/reports`・`GET /api/reports/{id}` | [保存済みReport取得](get-api-reports.md) | #57の委任に基づく実装判断。Jobによる所有者限定・保存本文を返す |
+| `PATCH /api/collections/{id}` | [本体・対象・情報源・Scheduleの一括更新](patch-api-collections.md) | Issue #74・#78・#80・#82。全体版の照合・同一要求の再試行 |
+| `GET /api/reports`・`GET /api/reports/{id}` | [保存済みReport取得](get-api-reports.md) | #57の委任に基づく実装判断。Jobによる所有者限定。#86で一覧は30件ずつcursor取得、詳細は保存本文を返し#84の安全表示を維持 |
+| `GET /api/generation-jobs` | [保存済み予定・結果](get-api-generation-jobs.md) | #88の直接採用範囲を具体化する実装判断。Job所有者限定・4状態・30件ずつcursor取得 |
+| `GET /api/collections/{id}/generation-jobs` | [Collection別の保存済み予定・結果](get-api-collection-generation-jobs.md) | #90の直接委任範囲を具体化する実装判断。現在CollectionとJobの両所有者条件・4状態・30件ずつcursor取得 |
 
 ログイン・本人情報取得は [Issue #53](https://github.com/smofktn/watchbrief/issues/53)、ログアウトAPIは [Issue #54](https://github.com/smofktn/watchbrief/issues/54)を対象とする。その他の後続APIは各Issueの設計時に追加する。
 

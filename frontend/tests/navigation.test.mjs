@@ -5,6 +5,9 @@ import { canonicalLoginPath, isProtectedPath, loginDestination, loginPathFor, sa
 test('only implemented protected paths can be a login destination', () => {
   assert.equal(isProtectedPath('/me'), true)
   assert.equal(safeReturnPath('/me'), '/me')
+  assert.equal(isProtectedPath('/home'), true)
+  assert.equal(safeReturnPath('/home'), '/home')
+  assert.equal(loginDestination('?return_to=%2Fhome'), '/home')
   for (const path of [null, '', '/', '/login', '/api/me', '/reports/unknown', '/missing']) {
     assert.equal(safeReturnPath(path), '/me')
   }
@@ -41,6 +44,16 @@ test('query parsing accepts one known path, canonicalizes it and removes unused 
     assert.equal(loginDestination(`?${new URLSearchParams({ return_to: path })}`), path)
   }
   for (const path of ['/reports/invalid', '/reports/81ARZ3NDEKTSV4RRFFQ69G5FAV', '/reports/01arz3ndektsv4rrffq69g5fav', '/reports/', '/reports?x=1', '/reports/01ARZ3NDEKTSV4RRFFQ69G5FAV#x']) {
+    assert.equal(safeReturnPath(path), '/me')
+  }
+})
+
+test('Collection history selector and selected Collection routes are protected and canonical', () => {
+  for (const path of ['/reports/collections', '/reports/collections/01ARZ3NDEKTSV4RRFFQ69G5FAV']) {
+    assert.equal(isProtectedPath(path), true)
+    assert.equal(loginDestination(`?${new URLSearchParams({ return_to: path })}`), path)
+  }
+  for (const path of ['/reports/collections/invalid', '/reports/collections/81ARZ3NDEKTSV4RRFFQ69G5FAV', '/reports/collections/01arz3ndektsv4rrffq69g5fav', '/reports/collections?x=1']) {
     assert.equal(safeReturnPath(path), '/me')
   }
 })

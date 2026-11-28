@@ -132,7 +132,8 @@ COMMIT;""")
     assert request('/api/collections', owner_token, original, extra_headers={'Idempotency-Key': creation_key})[0] == 409
     for column in ('name', 'research_instruction', 'initial_lookback_mode', 'initial_lookback_days', 'version', 'updated_at'):
         assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','" + column + "','UPDATE')") == 't'
-    for statement in ['UPDATE app.collections SET enabled=true WHERE false', 'UPDATE app.collections SET display_order=1 WHERE false',
+    assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','display_order','UPDATE')") == 't'
+    for statement in ['UPDATE app.collections SET enabled=true WHERE false',
                       "UPDATE app.collections SET user_id='00000000000000000000000000' WHERE false", 'DELETE FROM app.collections WHERE false',
                       'UPDATE app.watch_targets SET enabled=true WHERE false', 'DELETE FROM app.collection_update_requests WHERE false',
                       'UPDATE app.collection_update_requests SET result_version=99 WHERE false',

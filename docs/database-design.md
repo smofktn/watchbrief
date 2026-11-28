@@ -413,3 +413,77 @@ collection_update_requestsはuser_id（usersへRESTRICT）、request_key（小�
 APIに追加する権限は、本体のname・research_instruction・initial_lookback_mode・initial_lookback_days・version・updated_atの列UPDATEと更新要求記録のSELECT/INSERTだけ。enabled・display_order・所有者・作成日時・ID、配下設定、生成履歴、作成要求記録には更新権限を与えない。所有者条件は引き続きアプリが担い、DB権限だけでUser分離を保証しない。元の作成要求のinput_digestは編集後も元の入力に対応する。
 
 版10のDownは版と再試行記録を削除するため通常操作に含めない。旧版は編集せず、通常起動への自動migrationを追加しない。[更新API](API仕様/patch-api-collections.md)と[検証入口](../backend/README.md#collection本体の編集issue-74)を参照する。
+
+## WatchTarget追加・編集（Issue #78）
+
+[合意した入力範囲](product-definition.md#停止中collectionのwatchtarget追加編集issue-18範囲合意済み)は既存watch_targetsのname・instructionに対応する。goose版11でAPIへ必要列INSERT（id・collection_id・name・instruction・enabled・display_order）とUPDATE（name・instruction・updated_at）だけを追加する。SELECTは既存権限を使う。対象削除・有効状態更新・履歴更新・要求記録UPDATEは許可しない。enabledのDB既定falseや既存行は変更せず、新規対象は保存経路が明示的にtrueを設定する。
+
+既存の本人単位transaction advisory lockとcollection_update_requestsを共有する。本体・対象変更・Collectionの版の1増加・要求記録は同じtransactionで確定する。既存対象は所有Collectionへの所属を条件にname・instruction・updated_atだけを変更する。別Collectionの対象は他者所有／不存在と同じ404として全rollbackする。新規対象はAPI側でULIDを生成し、既存の最大display_order+1で末尾へ追加する。整数の上限超過も全rollbackとする。省略した対象、既存対象の状態・順序・情報源は変更しない。
+
+commit済み要求の再送では新規IDを生成せず元の成功結果を返し、画面が詳細を再取得する。digestは任意targetsのomitemptyで旧形式を維持し、新形式だけに対象変更を含める。空配列は省略と同じ対象変更なしとして扱う。旧形式の成功要求も再送可能とし、元の作成要求記録は変更しない。対象保存・要求記録挿入・版上限等の失敗は全rollbackとする。
+
+版11はテーブル・カラム・既存データを変更しない権限追加である。既存migrationは変更せず、通常起動への自動migrationを追加しない。通常DBと#21配備版への適用は含めず、別途固定版と明示操作で扱う。Downは追加権限を剥がすが、通常の切り戻しはアプリ版を戻し、旧版成功要求の再試行互換を保つ。[更新API](API仕様/patch-api-collections.md#watchtarget追加編集への拡張issue-78)と[隔離検証](../backend/README.md#本体とwatchtargetの一括保存issue-78)を参照する。
+
+## 情報源追加・編集（Issue #18）
+
+既存information_sourcesの列/外部キー/索引を使用し、追加migrationでAPIへ必要列INSERT(id,watch_target_id,name,url,instruction)とUPDATE(name,url,instruction,updated_at)だけを付与する。DELETE・親ID/ID変更の権限は付与しない。旧migration・既存データ・過去要求は変更しない。所属検証はCollection→対象→情報源の条件を持つSQLで行う。本体・対象・情報源・全体版・更新要求は既存本人単位lockの同一transactionで確定する。通常起動/配備へのmigration自動適用は追加しない。
+
+入力・保存契約は[正本](product-definition.md#停止中collectionの情報源追加編集issue-18)と[更新API](API仕様/patch-api-collections.md#情報源追加編集への拡張issue-18)を参照する。
+
+## Schedule一括保存への拡張
+
+既存collection_schedulesとcollection_idのUNIQUE・Collectionへの外部キーを使い、1 Collection最大1件を維持する。追加時はAPIがULIDを生成、編集はidとcollection_idの両方を条件にする。本人transaction advisory lockとCollection全体版・要求記録を共有し、本体/対象/情報源/Schedule/版1増加/要求記録を同一transactionで確定する。旧digestはScheduleのomitemptyで保持し、再送は保存済要求の結果を返す。
+
+goose版13はwatchbrief_apiへINSERT(id,collection_id,cron_expression)とUPDATE(cron_expression,updated_at)だけを付与する。SELECTは既存権限を使う。DELETE・id/親/作成日時変更・生成履歴更新・所有者権限は付与しない。旧migration1〜12、テーブル・カラム・既存データは変更しない。通常起動/配備への自動適用は追加しない。
+
+受理構文と所属404/追加競合・省略の通信契約は[更新API](API仕様/patch-api-collections.md#schedule追加編集)を参照。検証は[使い捨て環境の手順](../backend/README.md#scheduleの一括保存issue-82)で行い、通常DBへの適用は別途扱う。
+
+## 保存済みReportの安全なMarkdown表示
+
+保存済みbody_markdownをそのままAPIで取得し、ブラウザだけで変換表示する。Report/Attempt/Job/構造化テーブル・本文・権限は変更せず、migrationは追加しない。
+
+具体的な表示契約は[画面仕様](画面仕様/保存済みReportの取得.md#安全なmarkdown表示)を参照する。
+
+## 保存済み成功Report一覧の追加取得
+
+Report→Attempt→Jobの所有者条件を維持して31件まで取得する。続きは(j.scheduled_at,r.id)の厳密な小なり比較、順序は同tupleの降順。既存generation_jobs(user_id,scheduled_at,id)とReport/Attemptの一意索引・SELECT権限を使い、まずmigration/権限追加なしで構築する。境界時刻はDBのマイクロ秒を保持する。全ページのsnapshotや大規模全体の走査性能を保証するものではない。
+
+具体契約は[取得API](API仕様/get-api-reports.md#30件ずつのcursor追加取得)を参照する。
+
+## 日付別Job一覧の読み取り（Issue #88）
+
+既存generation_jobs(user_id,scheduled_at,id)索引とAttemptのgeneration_job_id一意索引、Reportのgeneration_attempt_id一意索引、APIの既存SELECT権限を使う。Job起点でLEFT JOINし、所有者WHEREと(scheduled_at,Job.id)の降順・厳密な小なり境界でLIMIT 31、最大30件を返す。予定時刻はUTCマイクロ秒を保持する。
+
+論理構造・物理型・権限・migrationは追加変更しない。削除済みCollectionへのJOINは不要。成功とReport有無の不整合は内部障害で閉じ、閲覧で履歴を修復しない。API契約は[Job一覧](API仕様/get-api-generation-jobs.md)。大規模履歴の実行計画と全ページsnapshotは今回保証しない。
+
+## Collection別Job一覧の読み取り（Issue #90）
+
+既存の `generation_jobs(collection_id, scheduled_at)` 一意索引と `generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引・API SELECT権限を使う。1 SQL文で、本人所有の現在Collectionを確認し、その同一スナップショットから `j.user_id` と `j.collection_id` の両条件でJobを検索する。Jobを起点にAttempt/ReportをLEFT JOINし、queuedを含む。Collectionが存在しない/所有者が違う/削除済みの場合は結果に404判定を返し、有効なCollectionにJobがない場合は200空配列とする。
+
+予定時刻・Job IDの降順、既存Job cursorの厳密なtuple境界、31件取得・30件返却を使う。cursorに含まれるCollectionを信頼せず、初回・各続き取得で所有者と選択Collection条件を再適用する。テーブル、論理関係、migration、権限の追加は行わない。既存索引を利用するクエリであり、新indexは要求しない。代表的な小規模fixtureで機能を検証するが、大規模履歴性能と全ページsnapshotは保証しない。[API](API仕様/get-api-collection-generation-jobs.md)を参照する。
+
+## ホームの最新保存済みReport（Issue #92）
+
+現在Collectionを起点に `collections.user_id = session_user_id` で絞り、各CollectionへLATERAL相当の最新Report参照を左結合する1 SQL statementで取得する。最新Report側でも `generation_jobs.user_id = session_user_id` と `generation_jobs.collection_id = collections.id` の両条件を必須にし、成功済みJob/AttemptからReport IDだけを読む。並びは `collections.display_order, collections.id`、各Collection内の最新選択は `generation_jobs.scheduled_at DESC, reports.id DESC` とする。
+
+既存の `collections(user_id, display_order, id)`、`generation_jobs(collection_id, scheduled_at)` 一意索引、`generation_jobs(user_id, scheduled_at, id)`、Attempt/Reportの既存一意索引とAPI SELECT権限を使う。Report本文、summary、input_snapshot、Attempt情報はSELECT結果・JSONへ含めない。テーブル・論理関係・migration・権限・indexを追加しない。代表fixtureで機能と所属を確認し、大規模な全Collection履歴に対する性能保証は今回行わない。[API](API仕様/get-api-home.md)を参照する。
+
+## ホームの本日予定状態（Issue #94）
+
+既存 `generation_jobs(user_id, scheduled_at, id)` の所有者と半開時刻範囲を使い、同じSQL statement内でUserの本日JobをCollection ID別にstatus集計する。JoinはCollection IDで行い、Collection側の `user_id`、Job側の `user_id` と `collection_id` をすべて条件に含める。現在Collection起点の既存最新Report LATERAL参照と同じstatement snapshotから応答行を作る。
+
+アプリケーションが一度計算したJST日の開始・翌日開始をUTC `timestamptz` 境界として渡し、`scheduled_at >= start AND scheduled_at < end` を用いる。境界精度はPostgreSQLのmicrosecond値を保持する。件数はGenerationJob.statusのFILTER集計であり、Attempt/Reportを参照しない。対象JobがないCollectionもLEFT JOINと0埋めで行を保持し、件数合計0はFrontendで状態欄を省略する。
+
+既存テーブル、論理関係、migration、index、DB権限を変更しない。Report本文/snapshot/Attempt/失敗情報を集計応答に含めない。代表的な架空fixtureで境界・所属を確認するが、大規模履歴性能を保証しない。[API](API仕様/get-api-home.md)を参照する。
+
+## Collection表示順の一括変更（Issue #96）
+
+goose版14で本人単位の `collection_order_requests(user_id, request_key, input_digest)` を追加する。user_idはusersへRESTRICT、request_keyは既存同様の小文字UUID v4、input_digestは32byte bytea、主キーは(user_id,request_key)。Collectionへの外部キーや設定本文/順序の複製は持たず、要求記録から削除済み設定を復活できないようにする。期限/自動削除はこの範囲で追加しない。
+
+Collection順序と要求記録を、作成/編集と共有する `hashtextextended(user_id,18)` transaction advisory lockの下で処理する。Read Committed transactionで要求記録を先に照合し、新要求は本人の現在行を `display_order,id` 順にロック付きで読む。期待する完全なID順・versionが現在値と一致し、希望ID列が同じ集合を一度ずつ含む場合だけ保存する。コレクション削除機能は現時点で存在しない。将来のDELETE経路もowner lockを共有し、この全件比較と直列化する。
+
+`ordered_ids` の位置を0始まりの連番display_orderとして保存する。実際に順序が変わる行だけdisplay_order・既存の全体version・updated_atを更新し、要求digest記録を同じtransactionでINSERTする。いずれかの更新/版上限/記録/commitに失敗したら全rollback。表示順の一意制約と新しいindexは追加せず、同値display_orderの取得順は既存 `display_order,id` を維持する。0/1/同一順の場合は不要なCollection version増加をしない。
+
+API roleには既存collectionsの `display_order` 列UPDATE権限だけをmigrationで追加する。`version,updated_at` は版10から既に付与済みであり、新規migrationでは再付与/Down時のREVOKEをしない。要求記録表はSELECT/INSERTのみを付与する。enabled、Collection ID/所有者/作成時刻、その他設定、生成履歴、要求記録UPDATE/DELETE、DDL/ロール管理の権限は加えない。既存 `collection_creation_requests` / `collection_update_requests` の列・digest・再送結果を変更/流用しない。所有者条件はアプリのsession由来SQLで行い、列権限だけでrow securityを保証するとは解釈しない。
+
+版14のDownは要求記録と再試行互換性を失わせるため通常操作に使わない。Downは新規の `display_order` 権限だけをREVOKEし、版10由来の `version,updated_at` 更新権限は保持する。専用隔離DBでUp/Down後も既存Collection編集が必要とする列権限が残ることを確認する。旧版は編集せず、通常起動時の自動migrationを追加しない。migration・列権限・競合/rollbackは専用隔離DBだけで検証する。[順序更新API](API仕様/put-api-collection-order.md)を参照する。

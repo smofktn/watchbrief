@@ -206,3 +206,67 @@ make verify-collection-update
 ブラウザでは実DB停止時の入力保持、実保存後にfetch境界で応答だけを捨てた再試行、別クライアントの先行保存と最新値確認/編集し直し、詳細/一覧/再読み込み、ログアウト消去を扱う。応答破棄は実ネットワーク断・DB commit応答喪失と区別する。Vitestは不正応答・401・遅い応答・二重送信・画面離脱を応答注入で確認する。
 
 通信と入力条件は[更新API](../docs/API仕様/patch-api-collections.md)、操作は[編集画面](../docs/画面仕様/コレクション本体の編集.md)、保存構造は[DB設計](../docs/database-design.md#collection本体の編集issue-74)。実行結果と未確認範囲は#74と子PRへ記録し、過去#72の結果を今回の動作確認に数えない。
+
+## 本体とWatchTargetの一括保存（Issue #78）
+
+停止中Collectionの本体と、対象名・任意の補足指示の追加・編集を既存PATCHで原子的に保存する。新規対象はONで末尾へ追加し、既存の状態・順序・情報源は維持する。通常起動前にgoose版11を既存の `make db-migrate` で明示適用する必要がある。この変更や `make dev` が通常DBや#21配備版へ自動適用することはない。既存migrationは変更しない。
+
+追加検証入口はルートの `make verify-collection-targets`。`make backend-deps frontend-install tools-install` で依存と既定版ツールを準備する。専用Compose project・空きポート・架空User/設定/履歴だけで新規構築、旧データの保持、APIの並列更新/再送、所有者非開示、巻き戻しと再試行、最小権限、実Chromiumを検証し、専用volumeと秘密ファイルを除去する。ChromiumはPATH・既存Playwright cache・CHROMIUM_BINから検出する。不足共有ライブラリは必要ならBROWSER_LIBRARY_PATHへ別途指定する。通常DBを起動・停止・初期化しない。検証結果はIssue/PRへ記録する。
+
+### 情報源の一括保存（Issue #80）
+
+停止中Collection詳細の編集で、保存済み対象の情報源を追加・編集し、本体/対象とまとめて保存する。新規対象には保存後に情報源を追加する。URLは検証・保存・テキスト表示だけを行い、外部アクセスや正規化・重複検査・削除は行わない。契約は[更新API](../docs/API仕様/patch-api-collections.md)を参照。
+
+検証入口はルートの `make verify-collection-sources`。使い捨てCompose project/架空データでmigration 9→10→11→12と再適用、旧要求digest/再送、原子的保存・所属/CSRF・URL/上限・競合/rollback・履歴不変、Chromiumを検証する。goose版12は情報源の必要列権限のみ追加し、通常DB/本番/EC2には適用しない。通常起動/配備への自動migrationも追加しない。
+
+## Scheduleの一括保存（Issue #82）
+
+停止中CollectionのSchedule追加・cron式編集を既存PATCHに含める。省略維持、最大1件・削除なし。全体版/本人lock/旧digest互換を維持し、版と要求記録まで原子的保存する。goose版13でScheduleのINSERT(id,collection_id,cron_expression)とUPDATE(cron_expression,updated_at)だけを付与する。既存migration1〜12・runtime・依存lockは変更せず、通常起動・配備へmigrationを混ぜない。
+
+`make verify-collection-schedules` は既存sources検証にSchedule API/Chromiumを加える。前提はGo/Node、`make backend-deps frontend-install`（npm ci --ignore-scripts）、既存sqlc/goose、Docker/Compose、Chromium。必要な場合だけBROWSER_LIBRARY_PATHを指定する。使い捨てproject/volume・空きport・架空データを使い、通常DBは停止/初期化/移行せず、最後に通常DBの稼働状態不変と専用環境の除去を確認する。
+
+新規構築、9→10→11→12→13の既存設定/要求保持・再適用、追加/編集/未設定/再表示、8並列再送/全体競合、旧source digest/再送、所属404/CSRF、構文不正、全rollback/復旧、履歴不変・禁止列権限を検証する。Chromiumでは正常系、構文エラー/空欄・フォーカス・390px幅、実DB停止、保存後のfetch境界での応答破棄と正確な再送、競合/比較/明示再編集、認証失効/logout消去を検証する。fetch境界注入は実通信断やDB commit応答喪失とは区別する。実施結果と未確認項目はIssue/PRへ記録する。
+
+cronの限定構文は[更新API](../docs/API仕様/patch-api-collections.md#schedule追加編集)を正とし、Go/TSの小さなvalidatorを共通fixtureで検証する。予定計算ライブラリの追加や#19の実装は行わない。作成済Job/Reportは変更しない。
+
+## 安全なMarkdown表示の隔離検証（Issue #84）
+
+`make verify-report-markdown` は既存の使い捨てCompose runnerで、架空User/保存済みReportと実Chromiumを検証する。`seed-markdown-reports.py` は別namespaceの新しい架空履歴を追加し、旧履歴を上書きしない。既存seedのSQL/権限は共有し、再投入時に不一致なら全体を失敗させる。手動入口は `make seed-markdown-reports LOGIN_ID=fictional_user`。本作業では通常DBへは実行しない。
+
+取得API・DB・本文の変更やmigrationはない。閲覧前後の履歴全体、APIのbody_markdownとDB本文一致、所有者404を検証する。画面・依存/licenseと前提は[Frontend](../frontend/README.md#保存済みreportのmarkdown表示issue-84)を参照。通常DBの稼働状態不変と使い捨てproject/volume/private状態の除去もrunnerが確認する。
+
+## 保存済みReport一覧の追加取得（Issue #86）
+
+GET /api/reportsは認証を先に照合し、初回/続きとも31件までのSELECTから最大30件とnext_cursorを返す。続きは予定時刻とReport IDの降順tuple境界を使い、常にJob.user_idで絞る。既存のSELECT権限/索引で開始し、migrationや権限追加はしない。具体的なv1 cursor正規形・query/認証優先・限界は[API契約](../docs/API仕様/get-api-reports.md#30件ずつのcursor追加取得)を正とする。
+
+`make verify-report-pages` は専用Compose project/空きport/架空Userと新namespace35件のseedを使い、通常DBを起動/停止/移行/初期化しない。Go/Node/Frontend依存、Docker/Compose、既存goose/sqlc・Chromiumが必要。BROWSER_LIBRARY_PATHは既存の不足ライブラリディレクトリを指定でき、OSへは導入しない。終了時に専用project/volume/private状態の除去と通常DB稼働状態不変を確認する。
+
+境界0/30/31/35、同日時と同一秒のマイクロ差/ID逆順、同cursor再試行、新Report挿入、他者/改変cursor・削除済Collection履歴、query拒否/未認証優先、履歴不変と発行済み有効cursor/秘密/本文のログ非混入を検査する。Chromiumでは30+5/終了、実DB停止/復旧/保持、二重操作、安全な詳細、一覧復帰/再読込、401/route/logoutの消去と遅延応答を確認する。実施結果・省略理由はIssue/PRへ記録する。
+
+`make seed-report-pages LOGIN_ID=fictional_user` は別namespaceへ架空35件を原子的追加する手動入口で、既存値の上書きをしない。seedは実生成の成功ではない。この作業では通常DBで実行せず、runner内だけで確認する。本格の日付/Collection/Job状態/home・#19/#20・有効化/配備は含めない。
+
+## 日付別の保存済み予定・結果（Issue #88）
+
+`/reports` 内のリンクから `/reports/daily` を開き、日本時間の日付ごとに保存済みJobの4状態を30件ずつ読む。成功だけ既存Report詳細へ移動する。手動更新は先頭30件へ戻る。生成処理は実行しない。
+
+ルートの `make verify-daily-jobs` は既存verify runnerの専用modeで、使い捨てCompose/架空履歴/Chromiumだけを使う。混合状態・境界/マイクロ秒・JST・所有者/削除済みCollection・不正cursor/認証優先・実DB停止復旧/保持・更新・認証消去/遅延破棄・履歴不変・通常DB稼働状態不変・後片付けと秘密値非混入を検査する。通常DBにseed/migrationを実行しない。seedは実生成成功ではない。事前条件は既存の隔離検証手順と同じで、runtime/lockfileは維持し `npm ci --ignore-scripts` を使う。
+
+契約は[Job一覧API](../docs/API仕様/get-api-generation-jobs.md)と[日付別画面](../docs/画面仕様/日付別の予定・結果一覧.md)。検証結果はIssue/PRに記録する。
+
+## Collection別の保存済み予定・結果（Issue #90）
+
+ルートの `make verify-collection-jobs` は専用Compose project/空きport/架空Userだけを使い、Collection所有者とJob所有者、同一SQL snapshot、空履歴、削除済みCollection、0/30/31/35件、cursor境界、4状態、Report詳細認可、実DB停止・復旧、Chromiumの深URL復帰/選択切替/更新/logoutを確認します。最後に履歴全体と通常DBの状態を照合し、このrun専用projectとprivate fixtureを削除します。通常DBを起動・停止・初期化せず、migrationも追加しません。
+
+依存とChromiumの準備は[既存隔離検証手順](../docs/verification-issue-17.md)と同じです。共有ライブラリが必要な場合は `BROWSER_LIBRARY_PATH` に既存directoryを指定します。実動作確認済みと未確認の区別をIssue/PRへ記録します。
+
+契約は[Collection別Job API](../docs/API仕様/get-api-collection-generation-jobs.md)と[画面仕様](../docs/画面仕様/Collection別の予定・結果一覧.md)を参照してください。
+
+## ホームの最新保存済みReport（Issue #92）
+
+ルートの `make verify-home` は既存verify runnerの専用modeで、使い捨てCompose project・架空User/履歴・Chromiumを使います。ホームの保存済み表示順変更と設定一覧/再読込の一致、認証/CSRF/所有者、同時再送/競合、rollback/retry、表示順migrationのUp/Down列権限、旧作成/更新要求replay互換を確認します。ホームAPIのJST日付・4状態件数・microsecond境界・最新Report/詳細導線/更新/認証復帰も回帰します。通常DBの起動・停止・移行・初期化は行わず、終了時に履歴不変・通常DB状態不変と専用project/private状態の除去を確認します。
+
+JobとAttempt双方の成功条件、複数成功Reportの最新選択、さらに新しいqueued/running/failed Job、現在Collection名とReport履歴名、空Collection、所有者分離、認証復帰・Report詳細・更新・logout、保存履歴不変を検証します。Fixtureは生成処理を実行せず、履歴の読取確認を生成成功とは扱いません。Chromium補助ライブラリが必要なら既存directoryを `BROWSER_LIBRARY_PATH` に指定します。
+
+現在のDB整合性triggerはJob・Attempt・Reportの矛盾した成功/失敗組合せをcommitできないため、「Job=成功・Attempt=失敗・Reportあり」の不正行を使った分岐単独試験は行いません。保存可能な成功行と整合するfailed/running/queued行、成功Reportより新しい非成功Jobを試験し、この不正状態自体は未確認として扱います。
+
+契約は[ホームAPI](../docs/API仕様/get-api-home.md)、[ホーム画面](../docs/画面仕様/ホーム.md)、[保護URLとログイン復帰](../docs/画面仕様/保護URLとログイン復帰.md)を参照してください。

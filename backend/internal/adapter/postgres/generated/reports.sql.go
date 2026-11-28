@@ -15,7 +15,7 @@ const listOwnedReports = `-- name: ListOwnedReports :many
 SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at
 FROM app.reports r JOIN app.generation_attempts a ON a.id = r.generation_attempt_id
 JOIN app.generation_jobs j ON j.id = a.generation_job_id
-WHERE j.user_id = $1 ORDER BY j.scheduled_at DESC, r.id DESC
+WHERE j.user_id = $1 ORDER BY j.scheduled_at DESC, r.id DESC LIMIT 31
 `
 
 type ListOwnedReportsRow struct {
@@ -34,6 +34,52 @@ func (q *Queries) ListOwnedReports(ctx context.Context, userID string) ([]ListOw
 	var items []ListOwnedReportsRow
 	for rows.Next() {
 		var i ListOwnedReportsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CollectionName,
+			&i.ScheduledAt,
+			&i.GeneratedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwnedReportsBefore = `-- name: ListOwnedReportsBefore :many
+SELECT r.id, j.collection_name, j.scheduled_at, a.finished_at AS generated_at
+FROM app.reports r JOIN app.generation_attempts a ON a.id = r.generation_attempt_id
+JOIN app.generation_jobs j ON j.id = a.generation_job_id
+WHERE j.user_id = $1 AND (j.scheduled_at, r.id) < ($2::timestamptz, $3::text)
+ORDER BY j.scheduled_at DESC, r.id DESC LIMIT 31
+`
+
+type ListOwnedReportsBeforeParams struct {
+	UserID   string
+	BeforeAt pgtype.Timestamptz
+	BeforeID string
+}
+
+type ListOwnedReportsBeforeRow struct {
+	ID             string
+	CollectionName string
+	ScheduledAt    pgtype.Timestamptz
+	GeneratedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) ListOwnedReportsBefore(ctx context.Context, arg ListOwnedReportsBeforeParams) ([]ListOwnedReportsBeforeRow, error) {
+	rows, err := q.db.Query(ctx, listOwnedReportsBefore, arg.UserID, arg.BeforeAt, arg.BeforeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOwnedReportsBeforeRow
+	for rows.Next() {
+		var i ListOwnedReportsBeforeRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CollectionName,

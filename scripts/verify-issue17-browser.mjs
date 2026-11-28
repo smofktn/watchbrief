@@ -20,6 +20,8 @@ let profile
 let timeout
 let phase = 'startup'
 const issued = []
+const networkRequests = []
+const externalRequests = []
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 // Only the detached process group created by this runner is signalled.
 const waitForBrowserExit = async (exited, milliseconds) => {
@@ -103,6 +105,12 @@ try {
         if (message.error) { callbacks.reject(new Error('CDP command failed')) } else { callbacks.resolve(message.result) }
       } else if (message.method === 'Page.loadEventFired') {
         loadCount++
+      } else if (fixture.verify_markdown && message.method === 'Network.requestWillBeSent') {
+        networkRequests.push(message.params.request.url)
+      } else if (fixture.verify_markdown && message.method === 'Fetch.requestPaused') {
+        const external = new URL(message.params.request.url).origin !== origin
+        if (external) { externalRequests.push(message.params.request.url) }
+        void send(external ? 'Fetch.failRequest' : 'Fetch.continueRequest', { requestId: message.params.requestId, ...(external ? { errorReason: 'BlockedByClient' } : {}) }, message.sessionId).catch(failBrowser)
       } else if (message.method === 'Runtime.exceptionThrown') {
         runtimeErrors.push(true)
       }
@@ -149,6 +157,7 @@ try {
   await call('Page.enable')
   await call('Runtime.enable')
   await call('Network.enable')
+  if (fixture.verify_markdown) { await call('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }) }
   phase = 'protected-return'
   await navigate('/reports/' + fixture.ids.report)
   await waitFor("document.querySelector('#password') !== null")
@@ -178,16 +187,17 @@ try {
   startDB()
   await click('設定を再試行')
   await waitFor("document.querySelector('main').textContent.includes('架空コレクション')")
+  const savedReportName = fixture.verify_daily ? '日付別検証（架空）' : fixture.verify_pages ? '追加取得用（架空）' : '保存Report確認用（架空）'
   phase = 'report-outage'
   await evaluate("window.pauseNextMe=true;document.querySelector('nav a[href=\"/reports\"]').click()")
   await waitFor("typeof window.releaseMe === 'function'")
   stopDB()
   await evaluate("window.releaseMe();window.releaseMe=undefined")
   await waitFor(hasButton('Reportを再試行'))
-  assert(!(await evaluate("document.querySelector('main').textContent.includes('保存Report確認用（架空）')")))
+  assert(!(await evaluate(`document.querySelector('main').textContent.includes(${JSON.stringify(savedReportName)})`)))
   startDB()
   await click('Reportを再試行')
-  await waitFor("document.querySelector('main').textContent.includes('保存Report確認用（架空）')")
+  await waitFor(`document.querySelector('main').textContent.includes(${JSON.stringify(savedReportName)})`)
   phase = 'me-outage'
   stopDB()
   await reload()
@@ -229,12 +239,53 @@ try {
     const { verifyUpdate } = await import('./verify-collection-update-browser.mjs')
     issued.push(await verifyUpdate({ checkpoint: value => { phase = 'collection-update-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
   }
+  if (fixture.verify_targets) {
+    const { verifyTargets } = await import('./verify-collection-targets-browser.mjs')
+    issued.push(await verifyTargets({ checkpoint: value => { phase = 'collection-targets-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
+  if (fixture.verify_sources) {
+    const { verifySources } = await import('./verify-collection-sources-browser.mjs')
+    issued.push(await verifySources({ checkpoint: value => { phase = 'collection-sources-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
+  if (fixture.verify_schedules) {
+    const { verifySchedules } = await import('./verify-collection-schedules-browser.mjs')
+    issued.push(await verifySchedules({ checkpoint: value => { phase = 'collection-schedules-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, stopDB, startDB, token }))
+  }
+  if (fixture.verify_markdown) {
+    const { verifyMarkdown } = await import('./verify-report-markdown-browser.mjs')
+    issued.push(await verifyMarkdown({ checkpoint: value => { phase = 'report-markdown-' + value }, call, evaluate, waitFor, navigate, click, submit, fixture, token, networkRequests, externalRequests }))
+  }
+  if (fixture.verify_daily) {
+    // Controlled fictional status change only inside the verified disposable project.
+    // Restored after checking refresh so full history comparison remains exact.
+    const changeDailyState = failed => {
+      assert(/^[a-z0-9_-]{1,64}$/.test(fixture.login_id))
+      const selection = "SELECT a.id FROM app.generation_attempts a JOIN app.generation_jobs j ON j.id=a.generation_job_id JOIN app.users u ON u.id=j.user_id WHERE u.login_id='"+fixture.login_id+"' AND j.input_snapshot->>'fixture'='daily-jobs-v1' AND j.collection_name='日付別検証（架空）2'"
+      const statement = "BEGIN; UPDATE app.generation_jobs SET status='"+(failed ? 'failed' : 'running')+"' WHERE id=(SELECT generation_job_id FROM app.generation_attempts WHERE id=("+selection+")); UPDATE app.generation_attempts SET status='"+(failed ? 'failed' : 'running')+"',finished_at="+(failed ? "'2026-01-02T00:00:04Z'" : 'NULL')+",failure_type="+(failed ? "'unexpected_error'" : 'NULL')+" WHERE id=("+selection+"); COMMIT;"
+      const result = spawnSync('docker', ['compose','exec','-T','postgres','psql','-X','-qAt','-U','postgres','-d','watchbrief','-v','ON_ERROR_STOP=1'], { input: statement, encoding:'utf8', timeout:15000 })
+      assert.equal(result.status,0,'Fictional status control failed')
+    }
+    const { verifyDaily } = await import('./verify-daily-jobs-browser.mjs')
+    issued.push(await verifyDaily({ checkpoint: value => { phase = 'daily-jobs-' + value }, changeDailyState, call, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
+  }
+  if (fixture.verify_collection_jobs) {
+    const { verifyCollectionJobs } = await import('./verify-collection-jobs-browser.mjs')
+    await verifyCollectionJobs({ checkpoint: value => { phase = 'collection-jobs-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, fixture })
+  }
+  if (fixture.verify_pages) {
+    const { verifyPages } = await import('./verify-report-pages-browser.mjs')
+    issued.push(await verifyPages({ checkpoint: value => { phase = 'report-pages-' + value }, evaluate, waitFor, navigate, click, submit, stopDB, startDB, token }))
+  }
+  if (fixture.verify_home) {
+    const { verifyHome } = await import('./verify-home-browser.mjs')
+    issued.push(await verifyHome({ checkpoint: value => { phase = 'home-' + value }, evaluate, waitFor, navigate, reload, click, submit, token, fixture, stopDB, startDB }))
+  }
   assert.equal(runtimeErrors.length, 0)
   assert(await evaluate('localStorage.length===0 && sessionStorage.length===0'))
   await writeFile(process.argv[2], JSON.stringify({ ...fixture, browser_tokens: issued }))
-  console.log('Browser: protected Report return, safe fallback, own settings/plain text Report, real DB outage and retry for login/me/settings/reports/logout: passed')
+  console.log('Browser: protected Report return, safe fallback, own settings/safe Report, real DB outage and retry for login/me/settings/reports/logout: passed')
 } catch (error) {
-  const location = /verify-collection-update-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
+  const location = /verify-(?:collection-(?:update|targets|sources|schedules|jobs)|report-markdown|report-pages|daily-jobs)-browser\.mjs:(\d+):\d+/.exec(error.stack ?? '')
   if (location) { console.error('browser_line=' + location[1]) }
   if (/^[A-Z_0-9]+$/.test(error.code ?? '')) { console.error('browser_code=' + error.code) }
   console.error('browser_stage=' + phase)

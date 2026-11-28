@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/smofktn/watchbrief/backend/internal/adapter/postgres/generated"
 	"github.com/smofktn/watchbrief/backend/internal/domain"
+	"github.com/smofktn/watchbrief/backend/internal/security/identifier"
 )
 
 func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key string, digest [32]byte, input domain.CollectionUpdate) (domain.CollectionUpdateResult, error) {
@@ -71,6 +72,77 @@ func (s *UserStore) UpdateOwnedCollection(ctx context.Context, owner, id, key st
 	}
 	if err != nil {
 		return empty, domain.ErrCollectionStore
+	}
+
+	for _, target := range input.Targets {
+		if target.ID != nil {
+			_, err := q.UpdateCollectionTarget(ctx, generated.UpdateCollectionTargetParams{ID: *target.ID, CollectionID: id, Name: target.Name, Instruction: target.Instruction})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			targetID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionTarget(ctx, generated.AppendCollectionTargetParams{ID: targetID, CollectionID: id, Name: target.Name, Instruction: target.Instruction}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
+	}
+	for _, source := range input.Sources {
+		if _, err := q.CollectionSourceTarget(ctx, generated.CollectionSourceTargetParams{ID: source.WatchTargetID, CollectionID: id}); errors.Is(err, pgx.ErrNoRows) {
+			return empty, domain.ErrResourceNotFound
+		} else if err != nil {
+			return empty, domain.ErrCollectionStore
+		}
+		if source.ID != nil {
+			_, err := q.UpdateCollectionSource(ctx, generated.UpdateCollectionSourceParams{ID: *source.ID, WatchTargetID: source.WatchTargetID, Name: source.Name, Url: source.URL, Instruction: source.Instruction})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			sourceID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionSource(ctx, generated.AppendCollectionSourceParams{ID: sourceID, WatchTargetID: source.WatchTargetID, Name: source.Name, Url: source.URL, Instruction: source.Instruction}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
+	}
+	if input.Schedule != nil {
+		schedule := input.Schedule
+		if schedule.ID == nil {
+			_, err := q.CollectionScheduleID(ctx, id)
+			if err == nil {
+				return empty, domain.ErrUpdateConflict
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrCollectionStore
+			}
+			scheduleID, err := identifier.NewULID()
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+			if q.AppendCollectionSchedule(ctx, generated.AppendCollectionScheduleParams{ID: scheduleID, CollectionID: id, CronExpression: schedule.CronExpression}) != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		} else {
+			_, err := q.UpdateCollectionSchedule(ctx, generated.UpdateCollectionScheduleParams{ID: *schedule.ID, CollectionID: id, CronExpression: schedule.CronExpression})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return empty, domain.ErrResourceNotFound
+			}
+			if err != nil {
+				return empty, domain.ErrCollectionStore
+			}
+		}
 	}
 	if q.RecordCollectionUpdate(ctx, generated.RecordCollectionUpdateParams{UserID: owner, RequestKey: key, CollectionID: pgtype.Text{String: id, Valid: true}, InputDigest: digest[:], ResultVersion: version}) != nil {
 		return empty, domain.ErrCollectionStore
