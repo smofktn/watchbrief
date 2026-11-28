@@ -1,6 +1,7 @@
 export interface HomeCollection {
   id: string
   name: string
+  version: string
   latest_report_id: string | null
   today_job_counts: HomeJobCounts
 }
@@ -29,13 +30,15 @@ const isDate = (value: unknown): value is string => {
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month! - 1 && parsed.getUTCDate() === day
 }
 const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0
+const isVersion = (value: unknown): value is string => typeof value === 'string' && /^[1-9][0-9]{0,18}$/.test(value)
 const isHomeJobCounts = (value: unknown): value is HomeJobCounts => object(value)
   && exactKeys(value, ['queued', 'running', 'succeeded', 'failed'])
   && isCount(value.queued) && isCount(value.running) && isCount(value.succeeded) && isCount(value.failed)
 
 const isHomeCollection = (value: unknown): value is HomeCollection => {
-  return object(value) && exactKeys(value, ['id', 'name', 'latest_report_id', 'today_job_counts']) && identifier(value.id)
+  return object(value) && exactKeys(value, ['id', 'name', 'version', 'latest_report_id', 'today_job_counts']) && identifier(value.id)
     && typeof value.name === 'string' && value.name.length > 0
+    && isVersion(value.version) && (value.version.length < 19 || value.version <= '9223372036854775807')
     && (value.latest_report_id === null || identifier(value.latest_report_id))
     && isHomeJobCounts(value.today_job_counts)
 }

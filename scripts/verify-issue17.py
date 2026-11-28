@@ -53,7 +53,7 @@ def main():
         shutil.copytree(ROOT / 'scripts', stage / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copy(ROOT / 'compose.yaml', stage / 'compose.yaml')
         (stage / 'backend').mkdir()
-        if updating:
+        if updating or home:
             shutil.copytree(ROOT / 'backend/db', stage / 'backend/db')
         else:
             (stage / 'backend/db').symlink_to(ROOT / 'backend/db', target_is_directory=True)
@@ -85,6 +85,28 @@ def main():
         def sql(statement):
             return run(['docker', 'compose', 'exec', '-T', 'postgres', 'psql', '-X', '-qAt', '-U', 'postgres',
                         '-d', 'watchbrief', '-v', 'ON_ERROR_STOP=1'], statement).strip()
+
+        def isolated_goose(command):
+            secret = stage / '.local/watchbrief-migrator-password'
+            password = secret.read_text().rstrip('\n')
+            migration_env = dict(environment)
+            for name in list(migration_env):
+                if name.startswith('PG') or name.startswith('GOOSE_'):
+                    del migration_env[name]
+            with tempfile.NamedTemporaryFile(mode='w', dir=stage / '.local', prefix='verify-pgpass-') as passfile:
+                escaped = password.replace('\\', '\\\\').replace(':', '\\:')
+                passfile.write(f"127.0.0.1:{db_port}:watchbrief:watchbrief_migrator:{escaped}\n")
+                passfile.flush()
+                migration_env.update({
+                    'PGPASSFILE': passfile.name,
+                    'GOOSE_DRIVER': 'postgres',
+                    'GOOSE_DBSTRING': f'host=127.0.0.1 port={db_port} dbname=watchbrief user=watchbrief_migrator sslmode=disable connect_timeout=5',
+                })
+                result = subprocess.run([str(stage / '.local/bin/goose'), '-env=none', '-dir', str(stage / 'backend/db/goose'),
+                                         '-table', 'app.goose_db_version', '-timeout', '30s', command],
+                                        cwd=stage, env=migration_env, capture_output=True, text=True, timeout=60)
+            if result.returncode:
+                raise AssertionError('Isolated Goose verification step failed.')
 
         def normal_db_state():
             result = run(['docker', 'ps', '-a', '--filter', 'label=com.docker.compose.project=watchbrief-local', '--format', '{{.ID}}'])
@@ -141,11 +163,27 @@ def main():
             expected_version = max(int(path.name.split('_')[0]) for path in (ROOT / 'backend/db/goose').glob('*.sql'))
             assert sql('SELECT max(version_id) FROM app.goose_db_version WHERE is_applied') == str(expected_version)
             script('verify-postgres-schema.py')
+            if home:
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','display_order','UPDATE')") == 't'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','version','UPDATE')") == 't'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','updated_at','UPDATE')") == 't'
+                isolated_goose('down')
+                assert sql('SELECT max(version_id) FROM app.goose_db_version WHERE is_applied') == '13'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','display_order','UPDATE')") == 'f'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','version','UPDATE')") == 't'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','updated_at','UPDATE')") == 't'
+                isolated_goose('up')
+                assert sql('SELECT max(version_id) FROM app.goose_db_version WHERE is_applied') == '14'
+                assert sql("SELECT has_column_privilege('watchbrief_api','app.collections','display_order','UPDATE')") == 't'
+                print('Collection order migration Up/Down: dedicated display_order grant removed/restored; existing version/updated_at grants retained: passed', flush=True)
             # Extend the normal constraint suite with DDL and role-management denials.
             for role in ('watchbrief_api', 'watchbrief_user_creator', 'watchbrief_password_resetter', 'watchbrief_migrator'):
                 statements = ['CREATE ROLE forbidden_verification;']
                 if role != 'watchbrief_migrator':
                     statements += ['CREATE TABLE app.forbidden_verification(id int);']
+                if role == 'watchbrief_api':
+                    statements += ['UPDATE app.collection_order_requests SET input_digest=input_digest WHERE false;',
+                                   'DELETE FROM app.collection_order_requests WHERE false;']
                 for statement in statements:
                     result = subprocess.run(['docker', 'compose', 'exec', '-T', 'postgres', 'psql', '-X', '-qAt', '-U', 'postgres', '-d', 'watchbrief', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'],
                                             input=f'BEGIN; SET LOCAL ROLE {role}; {statement} ROLLBACK;', text=True, capture_output=True, cwd=stage, env=environment)
@@ -213,17 +251,18 @@ def main():
                 responses = []
                 auth_marker = 'Bearer ' + secrets.token_urlsafe(24)
 
-                def request(path, token=None, data=None, supplied_origin=origin, extra_headers=None, method=None):
+                def request(path, token=None, data=None, supplied_origin=origin, extra_headers=None, method=None, raw_body=None):
                     headers = {'Authorization': auth_marker}
                     if token:
                         headers['Cookie'] = 'watchbrief_session=' + token
                     if supplied_origin:
                         headers['Origin'] = supplied_origin
-                    if data is not None:
+                    if data is not None or raw_body is not None:
                         headers['Content-Type'] = 'application/json'
                     headers.update(extra_headers or {})
+                    encoded = raw_body if raw_body is not None else (None if data is None else json.dumps(data).encode())
                     req = urllib.request.Request(f'http://127.0.0.1:{api_port}' + path,
-                                                 data=None if data is None else json.dumps(data).encode(), headers=headers, method=method)
+                                                 data=encoded, headers=headers, method=method)
                     try:
                         response = urllib.request.urlopen(req, timeout=20)
                     except urllib.error.HTTPError as error:
@@ -234,8 +273,8 @@ def main():
                             responses.append(body.decode())
                         return response.status, response.headers, body
 
-                def login(index=0, password=None):
-                    status, headers, _ = request('/api/login', data={'login_id': logins[index], 'password': password or passwords[index]})
+                def login(index=0, password=None, login_id=None):
+                    status, headers, _ = request('/api/login', data={'login_id': login_id or logins[index], 'password': password or passwords[index]})
                     assert status == 204, 'Login failed'
                     cookie = SimpleCookie(headers['Set-Cookie'])
                     token = cookie['watchbrief_session'].value
@@ -245,6 +284,15 @@ def main():
                 token = login()
                 token2 = login()
                 other_token = login(1)
+                order_one_token = None
+                if home:
+                    order_one_login = 'verify_e2e_order_one'
+                    cli('user-create', order_one_login, passwords[2])
+                    order_one_token = login(password=passwords[2], login_id=order_one_login)
+                    created = request('/api/collections', order_one_token,
+                        {'name': '一件だけの架空Collection', 'research_instruction': '隔離検証用', 'initial_lookback_mode': 'ai', 'initial_lookback_days': None},
+                        extra_headers={'Idempotency-Key': '81112233-4455-4677-8899-aabbccddeeff'})
+                    assert created[0] == 201
                 for path in ('/api/me', '/api/collections', '/api/reports'):
                     assert request(path, token)[0] == 200
                 for kind in ('collections', 'reports'):
@@ -292,7 +340,7 @@ def main():
                 home_checks = None
                 home_history = None
                 if home:
-                    home_checks = runpy.run_path(str(stage / 'scripts/verify-home.py'))['verify'](request,sql,token,other_token,logins[0])
+                    home_checks = runpy.run_path(str(stage / 'scripts/verify-home.py'))['verify'](request,sql,token,other_token,order_one_token,logins[0])
                     home_history = {table: sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') for table in ('generation_jobs','generation_attempts','reports','report_target_results','report_facts','report_sources','fact_sources','report_source_failures')}
                 before = sql("SELECT json_agg(u ORDER BY id)::text FROM app.users u")
                 sessions = sql("SELECT json_agg(s ORDER BY id)::text FROM app.auth_sessions s")
@@ -351,6 +399,14 @@ def main():
                     home_token = login(password=passwords[2])
                     runpy.run_path(str(stage / 'scripts/verify-home.py'))['verify_deleted_and_empty'](request,sql,home_token,other_token,logins[1],ids[logins[1]]['report'],home_checks)
                     assert request('/api/logout', home_token, {})[0] == 204
+                    replay_token = login(password=passwords[2])
+                    runpy.run_path(str(stage / 'scripts/verify-collection-order-replay.py'))['verify'](request, sql, replay_token, logins[0])
+                    assert request('/api/logout', replay_token, {})[0] == 204
+                    replay_token = login(password=passwords[2])
+                    runpy.run_path(str(stage / 'scripts/verify-collection-creation.py'))['verify'](request, sql, replay_token, other_token)
+                    runpy.run_path(str(stage / 'scripts/verify-collection-update.py'))['verify'](request, sql, replay_token, other_token, ids[logins[0]]['collection'])
+                    assert request('/api/logout', replay_token, {})[0] == 204
+                    print('Legacy Collection creation/update request replay after reorder: passed', flush=True)
                 if markdown:
                     assert all(sql("SELECT coalesce(json_agg(t ORDER BY id)::text,'[]') FROM app."+table+' t') == value for table,value in markdown_history.items())
                     print('Markdown viewing preserved all saved history and body/API values; old seed history unchanged: passed', flush=True)
@@ -387,7 +443,10 @@ def main():
                 if pages:
                     forbidden += [value for value in page_checks['cursors'] if value]
                 if home:
-                    forbidden += [value for key,value in home_checks.items() if key != 'as_of_date' and value]
+                    for key, value in home_checks.items():
+                        if key == 'as_of_date':
+                            continue
+                        forbidden.extend(value if isinstance(value, list) else [value])
                     forbidden += ['現在のCollection名（架空）', '成功時の履歴名（架空）', '空の架空Collection']
                 for value in forbidden:
                     assert value and value not in log_text, 'Private log content'

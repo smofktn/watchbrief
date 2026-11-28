@@ -53,6 +53,9 @@ func NewHandler(origin string, service LoginService, current CurrentUserService,
 		if updater, ok := collections[0].(CollectionUpdater); ok {
 			mux.Handle("PATCH /api/collections/{id}", sameOriginHandler(origin, protection, collectionUpdateHandler(updater, logger)))
 		}
+		if orderer, ok := collections[0].(CollectionOrderUpdater); ok {
+			mux.Handle("PUT /api/collections/order", sameOriginHandler(origin, protection, collectionOrderHandler(orderer, logger)))
+		}
 		if creator, ok := collections[0].(CollectionCreator); ok {
 			mux.Handle("POST /api/collections", sameOriginHandler(origin, protection, collectionCreationHandler(creator, logger)))
 		}

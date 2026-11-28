@@ -10,6 +10,7 @@ var (
 type HomeCollection struct {
 	ID             string        `json:"id"`
 	Name           string        `json:"name"`
+	Version        string        `json:"version"`
 	LatestReportID *string       `json:"latest_report_id"`
 	TodayJobCounts HomeJobCounts `json:"today_job_counts"`
 }

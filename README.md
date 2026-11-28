@@ -151,4 +151,4 @@ Collection本体の編集は版10の明示migration後、停止中の詳細か�
 
 `/home` で本人の現在Collectionと現在名を表示し、各Collectionに保存済み成功Reportがある場合だけ既存詳細へのリンクを表示します。リンクを主導線として維持し、JST本日の保存済みJobがあるCollectionには4状態の件数を補助表示します。生成や外部取得は行いません。
 
-検証入口は `make verify-home`。使い捨てDB/架空データ/Chromiumで最新選択、4状態とJST境界、Job/Attemptの成功条件、空Collection、認証復帰、Report詳細への導線を確認します。[画面仕様](docs/画面仕様/ホーム.md)・[API契約](docs/API仕様/get-api-home.md)を参照してください。
+検証入口は `make verify-home`。使い捨てDB/架空データ/Chromiumでホームの保存済み表示順変更、Collection一覧との一致、保存再送・競合・rollback、migration Up/Down時の列権限、旧作成/更新要求replayとの互換を確認します。既存の最新選択、4状態とJST境界、Job/Attemptの成功条件、空Collection、認証復帰、Report詳細への導線も回帰確認します。[画面仕様](docs/画面仕様/ホーム.md)・[順序更新API](docs/API仕様/put-api-collection-order.md)・[ホームAPI](docs/API仕様/get-api-home.md)を参照してください。

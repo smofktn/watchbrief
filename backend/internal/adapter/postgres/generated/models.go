@@ -35,6 +35,12 @@ type AppCollectionCreationRequest struct {
 	CollectionID pgtype.Text
 }
 
+type AppCollectionOrderRequest struct {
+	UserID      string
+	RequestKey  string
+	InputDigest []byte
+}
+
 type AppCollectionSchedule struct {
 	ID             string
 	CollectionID   string

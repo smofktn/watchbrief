@@ -12,7 +12,7 @@ WITH today_jobs AS (
       AND j.scheduled_at < sqlc.arg(end_at)::timestamptz
     GROUP BY j.collection_id
 )
-SELECT c.id, c.name, COALESCE(latest.report_id, '') AS latest_report_id,
+SELECT c.id, c.name, c.version, COALESCE(latest.report_id, '') AS latest_report_id,
        COALESCE(today_jobs.queued_count, 0)::bigint AS today_queued_count,
        COALESCE(today_jobs.running_count, 0)::bigint AS today_running_count,
        COALESCE(today_jobs.succeeded_count, 0)::bigint AS today_succeeded_count,

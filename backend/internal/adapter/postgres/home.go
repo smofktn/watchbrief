@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,7 +23,7 @@ func (s *UserStore) ListHomeCollections(ctx context.Context, userID string, star
 func homeCollections(rows []generated.ListHomeCollectionsRow) ([]domain.HomeCollection, error) {
 	collections := make([]domain.HomeCollection, 0, len(rows))
 	for _, row := range rows {
-		if !domain.ValidIdentifier(row.ID) || row.Name == "" {
+		if !domain.ValidIdentifier(row.ID) || row.Name == "" || row.Version < 1 {
 			return nil, domain.ErrHomeStore
 		}
 		var reportID *string
@@ -37,7 +38,7 @@ func homeCollections(rows []generated.ListHomeCollectionsRow) ([]domain.HomeColl
 		if counts.Queued < 0 || counts.Running < 0 || counts.Succeeded < 0 || counts.Failed < 0 {
 			return nil, domain.ErrHomeStore
 		}
-		collections = append(collections, domain.HomeCollection{ID: row.ID, Name: row.Name, LatestReportID: reportID, TodayJobCounts: counts})
+		collections = append(collections, domain.HomeCollection{ID: row.ID, Name: row.Name, Version: strconv.FormatInt(row.Version, 10), LatestReportID: reportID, TodayJobCounts: counts})
 	}
 	return collections, nil
 }
